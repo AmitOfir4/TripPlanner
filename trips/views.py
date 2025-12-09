@@ -1,9 +1,13 @@
+import os
 from django.shortcuts import render
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-import os
 from dotenv import load_dotenv
-from django.http import JsonResponse, HttpResponse
+from django.http import JsonResponse, HttpResponse, FileResponse
+
+from .api_service import fetch_attractions           # <-- Now exists
+from .kml_service import generate_trip_kml          # <-- Must exist
+from .planner_service import plan_itinerary_nearest_neighbor # <-- Must exist
 
 # Load the environment variables from the .env file
 load_dotenv()
