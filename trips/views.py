@@ -25,13 +25,26 @@ def plan_trip(request):
     if not city:
         return Response({"error": "City parameter is required."}, status=400)
 
-    # --- Step 1: Data Fetching and Planning Logic will go here ---
-    # We will call the Google Places API here using the GOOGLE_API_KEY
-
-    # --- Temporary Success Response (Remove later) ---
+    # Step 1: Fetch attractions from Google Places API
+    attractions = fetch_attractions(city)
+    
+    if not attractions:
+        return Response({
+            "error": f"Could not find attractions for {city}. Please try another city."
+        }, status=404)
+    
+    # Step 2: Plan the itinerary using Nearest Neighbor algorithm
+    itinerary = plan_itinerary_nearest_neighbor(attractions)
+    
+    # Step 3: Generate KML file
+    kml_path = generate_trip_kml(city, itinerary)
+    
+    # Return the itinerary and path to KML file
     return Response({
-        "status": "success", 
-        "message": f"Successfully received city: {city}. API key loaded: {bool(GOOGLE_API_KEY)}"
+        "status": "success",
+        "city": city,
+        "itinerary": itinerary,
+        "kml_path": f"/media/{os.path.basename(kml_path)}"
     })
 
 def root_view(request):

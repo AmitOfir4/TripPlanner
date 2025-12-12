@@ -16,10 +16,16 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from trips.views import root_view # <-- Import the new function
+from trips.views import root_view
+from django.conf import settings
+from django.conf.urls.static import static
 
 urlpatterns = [
-    path('', root_view, name='root'), # <-- ADD THIS LINE for the home page
+    path('', root_view, name='root'),
     path('admin/', admin.site.urls),
     path('api/', include('trips.urls')),
 ]
+
+# Serve media files in development
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
