@@ -16,7 +16,7 @@ export const fetchSuggestions = async (
     ? `\nDO NOT suggest: [${excludeTitles.join(', ')}].` 
     : '';
   
-  const prompt = `You are a travel expert. Suggest 8-10 specific places in ${city} for: "${query}".
+  const prompt = `You are a travel expert. Suggest 18-20 specific places in ${city} for: "${query}".
   ${excludeText}
   Respond in ${languageName}.
   

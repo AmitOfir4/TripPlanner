@@ -4,7 +4,7 @@ import {
   MapPin, Search, Compass, Layers, ExternalLink, Loader2, 
   Sparkles, Map as MapIcon, Download, Info, 
   Plus, Trash2, X, Star, RefreshCw, MessageSquare, Image as ImageIcon,
-  Camera, Map as MapIcon2, AlertTriangle, ChevronRight
+  Camera, Map as MapIcon2, AlertTriangle, ChevronRight, ChevronLeft
 } from 'lucide-react';
 import { fetchSuggestions } from './geminiService';
 import { TripData, Language, TripRecommendation, TripLayer } from './types';
@@ -80,15 +80,16 @@ const getFallbackImage = (category: string) => {
 };
 
 const GooglePlaceImage = memo(({ place, mapsStatus, index = 0 }: { place: TripRecommendation, mapsStatus: 'loading' | 'loaded' | 'error', index?: number }) => {
-  const [imgUrl, setImgUrl] = useState<string | null>(null);
+  const [imgUrls, setImgUrls] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [sourceType, setSourceType] = useState<'official' | 'map' | 'stock'>('official');
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   useEffect(() => {
     let isMounted = true;
     if (mapsStatus === 'error') {
       setSourceType('stock');
-      setImgUrl(getFallbackImage(place.category));
+      setImgUrls([getFallbackImage(place.category)]);
       setLoading(false);
       return;
     }
@@ -108,8 +109,10 @@ const GooglePlaceImage = memo(({ place, mapsStatus, index = 0 }: { place: TripRe
           
           if (!isMounted) return;
           if (placeInstance.photos && placeInstance.photos.length > 0) {
-            const photoUrl = placeInstance.photos[0].getURI({ maxWidth: 800, maxHeight: 600 });
-            setImgUrl(photoUrl);
+            const photoUrls = placeInstance.photos.slice(0, 5).map((photo: any) => 
+              photo.getURI({ maxWidth: 800, maxHeight: 600 })
+            );
+            setImgUrls(photoUrls);
             setSourceType('official');
             setLoading(false);
             return;
@@ -120,13 +123,13 @@ const GooglePlaceImage = memo(({ place, mapsStatus, index = 0 }: { place: TripRe
       }
       
       if (place.photoUrl) {
-        setImgUrl(place.photoUrl);
+        setImgUrls([place.photoUrl]);
         setSourceType('official');
         setLoading(false);
         return;
       }
 
-      setImgUrl(getFallbackImage(place.category));
+      setImgUrls([getFallbackImage(place.category)]);
       setSourceType('stock');
       setLoading(false);
     }, delay);
@@ -145,15 +148,59 @@ const GooglePlaceImage = memo(({ place, mapsStatus, index = 0 }: { place: TripRe
     );
   }
 
+  const handlePrevImage = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCurrentImageIndex((prev) => (prev === 0 ? imgUrls.length - 1 : prev - 1));
+  };
+
+  const handleNextImage = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCurrentImageIndex((prev) => (prev === imgUrls.length - 1 ? 0 : prev + 1));
+  };
+
   return (
     <div className="w-full h-full relative overflow-hidden group">
-      <img 
-        src={imgUrl || getFallbackImage(place.category)} 
-        alt={place.title} 
-        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000 ease-out brightness-[0.95]"
-        onLoad={(e) => (e.currentTarget.style.opacity = '1')}
-        style={{ opacity: 0, transition: 'opacity 0.7s ease-out' }}
-      />
+      {imgUrls.length > 0 && (
+        <>
+          <img 
+            src={imgUrls[currentImageIndex] || getFallbackImage(place.category)} 
+            alt={`${place.title} ${currentImageIndex + 1}`} 
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000 ease-out brightness-[0.95]"
+            onLoad={(e) => (e.currentTarget.style.opacity = '1')}
+            style={{ opacity: 0, transition: 'opacity 0.7s ease-out' }}
+          />
+          
+          {imgUrls.length > 1 && (
+            <>
+              <button
+                onClick={handlePrevImage}
+                className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-black/40 hover:bg-black/60 backdrop-blur-md rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <ChevronLeft className="w-5 h-5 text-white" />
+              </button>
+              <button
+                onClick={handleNextImage}
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-black/40 hover:bg-black/60 backdrop-blur-md rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <ChevronRight className="w-5 h-5 text-white" />
+              </button>
+              
+              <div className="absolute bottom-2 right-2 flex gap-1">
+                {imgUrls.map((_, i) => (
+                  <div
+                    key={i}
+                    className={`w-1.5 h-1.5 rounded-full transition-all ${
+                      i === currentImageIndex ? 'bg-white w-4' : 'bg-white/50'
+                    }`}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </>
+      )}
       <div className="absolute bottom-2 left-2 px-2 py-1 bg-black/40 backdrop-blur-md rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
         <span className="text-[8px] font-bold text-white uppercase tracking-widest flex items-center gap-1">
           {sourceType === 'official' ? <Camera className="w-2.5 h-2.5" /> : <ImageIcon className="w-2.5 h-2.5" />}
