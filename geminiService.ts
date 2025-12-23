@@ -87,16 +87,18 @@ export const fetchSuggestions = async (
         placeName.toLowerCase().includes(c.maps?.title?.toLowerCase() || "")
       );
 
-      // Extract Place ID from grounding URI if possible
-      const uri = matchingChunk?.maps?.uri || "";
-      const placeIdMatch = uri.match(/place_id:([^&/]+)/) || uri.match(/query_place_id=([^&/]+)/);
-      const placeId = placeIdMatch ? placeIdMatch[1] : undefined;
+      // Extract Place ID - prioritize direct placeId field, then parse from URI
+      let placeId = matchingChunk?.maps?.placeId;
+      if (!placeId) {
+        const uri = matchingChunk?.maps?.uri || "";
+        const placeIdMatch = uri.match(/place_id:([^&/]+)/) || uri.match(/query_place_id=([^&/]+)/);
+        placeId = placeIdMatch ? placeIdMatch[1] : undefined;
+      }
 
       if (placeName && placeName !== "Unknown Place" && lat !== undefined && lng !== undefined) {
-        // Prioritize specific Maps key, fallback to general API key
-        const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.API_KEY;
-        // Use Roadmap for better success chance with AI keys
-        const photoUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=16&size=800x600&maptype=roadmap&markers=color:red%7C${lat},${lng}&key=${apiKey}`;
+        // Use Places Photo API - will be fetched client-side with place_id
+        // Don't pre-generate photo URL, let client fetch via Places API
+        const photoUrl = undefined;
 
         suggestions.push({
           title: placeName,

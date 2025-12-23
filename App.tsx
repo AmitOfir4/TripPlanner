@@ -84,7 +84,7 @@ const getFallbackImage = (category: string) => {
  * GooglePlaceImage: 
  * Handles image loading with awareness of API status.
  */
-const GooglePlaceImage = memo(({ place, mapsStatus }: { place: TripRecommendation, mapsStatus: 'loading' | 'loaded' | 'error' }) => {
+const GooglePlaceImage = memo(({ place, mapsStatus, index = 0 }: { place: TripRecommendation, mapsStatus: 'loading' | 'loaded' | 'error', index?: number }) => {
   const [imgUrl, setImgUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sourceType, setSourceType] = useState<'official' | 'map' | 'stock'>('official');
@@ -100,77 +100,67 @@ const GooglePlaceImage = memo(({ place, mapsStatus }: { place: TripRecommendatio
       return;
     }
 
-    // Safety timeout
-    const safetyTimeout = setTimeout(() => {
-      if (isMounted && loading) {
-        useFallback();
-      }
-    }, 2000);
-
-    const useFallback = () => {
+    // Stagger image loads to avoid rate limiting
+    // Use place title hash to create consistent but distributed delays
+    const titleHash = place.title.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const baseDelay = (titleHash % 10) * 250; // 0-2250ms spread
+    const delay = baseDelay + (index * 100); // Add index-based delay
+    
+    const timer = setTimeout(async () => {
       if (!isMounted) return;
-      // If Maps API is broken, Static Maps (photoUrl) usually breaks too. Use Stock.
-      // Note: mapsStatus cannot be 'error' here because of the early return above.
-      setSourceType(place.photoUrl ? 'map' : 'stock');
-      setImgUrl(place.photoUrl || getFallbackImage(place.category));
-      setLoading(false);
-    };
-
-    const fetchPhoto = () => {
-      if (mapsStatus !== 'loaded') return;
-
-      try {
-        if (!(window as any).google || !(window as any).google.maps || !(window as any).google.maps.places) {
-          useFallback();
-          return;
-        }
-
-        const dummyElement = document.createElement('div');
-        const service = new google.maps.places.PlacesService(dummyElement);
-
-        const handleDetails = (result: any, status: any) => {
+      
+      // Try to fetch Place Photo if we have a placeId and Maps API is loaded
+      if (place.placeId && mapsStatus === 'loaded') {
+        try {
+          // Remove 'places/' prefix if it exists (new API expects just the ID)
+          const cleanPlaceId = place.placeId.replace(/^places\//, '');
+          console.log(`[${place.title}] Fetching Place Photo for placeId:`, cleanPlaceId);
+          
+          // Use new Places API
+          const { Place } = await google.maps.importLibrary("places") as google.maps.PlacesLibrary;
+          const placeInstance = new Place({ id: cleanPlaceId });
+          
+          // Fetch photos field
+          await placeInstance.fetchFields({ fields: ['photos'] });
+          
           if (!isMounted) return;
-          if (status === google.maps.places.PlacesServiceStatus.OK && result.photos && result.photos.length > 0) {
-            setImgUrl(result.photos[0].getUrl({ maxWidth: 800, maxHeight: 600 }));
+          
+          if (placeInstance.photos && placeInstance.photos.length > 0) {
+            const photoUrl = placeInstance.photos[0].getURI({ maxWidth: 800, maxHeight: 600 });
+            console.log(`[${place.title}] ✓ Place Photo loaded`);
+            setImgUrl(photoUrl);
             setSourceType('official');
             setLoading(false);
+            return;
           } else {
-            useFallback();
+            console.warn(`[${place.title}] No photos available for this place`);
           }
-        };
-
-        if (place.placeId) {
-          service.getDetails({ placeId: place.placeId, fields: ['photos'] }, handleDetails);
-        } else {
-          service.findPlaceFromQuery({
-            query: place.title,
-            fields: ['photos', 'place_id']
-          }, (results: any, status: any) => {
-             if (!isMounted) return;
-             if (status === google.maps.places.PlacesServiceStatus.OK && results && results[0]?.photos) {
-               setImgUrl(results[0].photos[0].getUrl({ maxWidth: 800, maxHeight: 600 }));
-               setSourceType('official');
-               setLoading(false);
-             } else {
-               useFallback();
-             }
-          });
+        } catch (err) {
+          console.warn(`[${place.title}] Place Photo fetch error:`, err);
         }
-      } catch (e) {
-        console.warn("Places API error:", e);
-        useFallback();
       }
-    };
+      
+      // If we have a photoUrl (backup), use it
+      if (place.photoUrl) {
+        console.log(`[${place.title}] Loading backup photo`);
+        setImgUrl(place.photoUrl);
+        setSourceType('official');
+        setLoading(false);
+        return;
+      }
 
-    if (mapsStatus === 'loaded') {
-      fetchPhoto();
-    }
+      // Fallback to stock images
+      console.log(`[${place.title}] Using stock image`);
+      setImgUrl(getFallbackImage(place.category));
+      setSourceType('stock');
+      setLoading(false);
+    }, delay);
 
     return () => {
       isMounted = false;
-      clearTimeout(safetyTimeout);
+      clearTimeout(timer);
     };
-  }, [place.placeId, place.title, place.category, place.photoUrl, mapsStatus]);
+  }, [place.photoUrl, place.placeId, place.category, place.title, mapsStatus, index]);
 
   if (loading) {
     return (
@@ -192,6 +182,7 @@ const GooglePlaceImage = memo(({ place, mapsStatus }: { place: TripRecommendatio
         onError={(e) => {
            const target = e.currentTarget as HTMLImageElement;
            const fallback = getFallbackImage(place.category);
+           console.log(`[${place.title}] Image load failed, falling back to stock. Failed URL:`, target.src);
            if (target.src !== fallback) {
               target.src = fallback;
               setSourceType('stock');
@@ -249,7 +240,7 @@ const App: React.FC = () => {
     };
 
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&loading=async`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&v=weekly`;
     script.async = true;
     script.defer = true;
     
@@ -433,7 +424,7 @@ const App: React.FC = () => {
                     {pendingSuggestions.map((place, idx) => (
                       <div key={idx} className="bg-white rounded-[2rem] border border-slate-200 overflow-hidden shadow-sm hover:shadow-2xl hover:border-indigo-200 transition-all group flex flex-col">
                         <div className="relative h-56 overflow-hidden bg-slate-100">
-                           <GooglePlaceImage place={place} mapsStatus={mapsStatus} />
+                           <GooglePlaceImage place={place} mapsStatus={mapsStatus} index={idx} />
                            
                            <div className="absolute top-4 left-4 flex flex-col gap-2">
                               <span className="text-[9px] font-black uppercase tracking-widest text-indigo-600 bg-white/95 px-2.5 py-1 rounded-full shadow-sm">
