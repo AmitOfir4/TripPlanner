@@ -1,69 +1,69 @@
 
-import React, { useState, useEffect, useRef, memo } from 'react';
+import React, { useState, useEffect, useRef, memo, useCallback } from 'react';
 import { 
   MapPin, Search, Compass, Layers, ExternalLink, Loader2, 
   Sparkles, Map as MapIcon, Download, Info, 
   Plus, Trash2, X, Star, RefreshCw, MessageSquare, Image as ImageIcon,
-  Camera, Map as MapIcon2, AlertTriangle
+  Camera, Map as MapIcon2, AlertTriangle, ChevronRight
 } from 'lucide-react';
 import { fetchSuggestions } from './geminiService';
 import { TripData, Language, TripRecommendation, TripLayer } from './types';
 import { generateKml, downloadFile } from './utils';
 
 declare var google: any;
+declare var window: any;
 
 const translations = {
   en: {
-    title: "MapLayer AI",
-    builder: "Discovery",
+    title: "TripPlanner",
+    builder: "Plan Your Escape",
     savedMap: "Trip Summary",
-    cityPrompt: "Target City",
-    queryPrompt: "Tell AI what to find...",
-    queryPlaceholder: "e.g. Hidden gems, best pizza, photo spots...",
-    findPlaces: "Find Places",
-    loadMore: "Load More Suggestions",
-    searching: "Searching...",
+    cityPrompt: "Destination City",
+    queryPrompt: "What are you looking for?",
+    queryPlaceholder: "e.g. Hidden gems, best pizza, local art...",
+    findPlaces: "Discover Spots",
+    loadMore: "Find More",
+    searching: "Searching the map...",
     savePlace: "Add to Trip",
     dismiss: "Skip",
-    noCity: "Define a city to explore",
-    noPlaces: "No spots saved yet",
-    saved: "Saved!",
+    noCity: "Where should we go first?",
+    noPlaces: "Your itinerary is empty",
+    saved: "Added!",
     downloadKml: "Export to My Maps",
     howToImport: "How to use",
     sources: "Map Evidence",
-    reset: "Restart",
-    layersTip: "Layers are automatically created per city.",
+    reset: "Clear",
+    layersTip: "Locations are grouped by city layers for easier navigation.",
     rating: "Rating",
-    topRated: "Top Rated First",
-    apiError: "Maps Visuals Disabled (API Key Restricted)"
+    topRated: "Highly Recommended",
+    apiError: "Visuals Restricted"
   },
   he: {
-    title: "MapLayer AI",
-    builder: "גילוי מקומות",
+    title: "TripPlanner",
+    builder: "תכנן את הטיול שלך",
     savedMap: "סיכום טיול",
     cityPrompt: "עיר יעד",
-    queryPrompt: "מה לחפש?",
-    queryPlaceholder: "למשל: פנינים נסתרות, הפיצה הכי טובה...",
+    queryPrompt: "מה תרצו למצוא?",
+    queryPlaceholder: "למשל: מקומות נסתרים, פיצה מעולה...",
     findPlaces: "חפש מקומות",
-    loadMore: "טען עוד תוצאות",
-    searching: "מחפש...",
+    loadMore: "טען עוד",
+    searching: "מחפש במפה...",
     savePlace: "הוסף לטיול",
     dismiss: "דלג",
-    noCity: "הזן עיר כדי להתחיל",
-    noPlaces: "טרם נשמרו מקומות",
+    noCity: "לאן נטוס קודם?",
+    noPlaces: "סיכום הטיול ריק",
     saved: "נשמר!",
     downloadKml: "ייצוא ל-My Maps",
     howToImport: "איך להשתמש?",
     sources: "מקורות מידע",
-    reset: "אפס הכל",
-    layersTip: "שכבות נוצרות אוטומטית לכל עיר.",
+    reset: "אפס",
+    layersTip: "המקומות מקובצים לפי ערים לניווט קל יותר.",
     rating: "דירוג",
-    topRated: "הכי מדורגים קודם",
-    apiError: "מפות ויזואליות מנוטרלות (מפתח API מוגבל)"
+    topRated: "מומלץ במיוחד",
+    apiError: "מפות מוגבלות"
   }
 };
 
-// Helper to get reliable fallback images based on category
 const getFallbackImage = (category: string) => {
   const lower = (category || '').toLowerCase();
   if (lower.includes('food') || lower.includes('restaurant') || lower.includes('cafe') || lower.includes('dining')) 
@@ -76,14 +76,9 @@ const getFallbackImage = (category: string) => {
     return "https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80";
   if (lower.includes('beach') || lower.includes('sea')) 
     return "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80";
-  // Default City/Travel
   return "https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?auto=format&fit=crop&w=800&q=80";
 };
 
-/**
- * GooglePlaceImage: 
- * Handles image loading with awareness of API status.
- */
 const GooglePlaceImage = memo(({ place, mapsStatus, index = 0 }: { place: TripRecommendation, mapsStatus: 'loading' | 'loaded' | 'error', index?: number }) => {
   const [imgUrl, setImgUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -91,8 +86,6 @@ const GooglePlaceImage = memo(({ place, mapsStatus, index = 0 }: { place: TripRe
 
   useEffect(() => {
     let isMounted = true;
-    
-    // Immediate fallback if API is known to be broken
     if (mapsStatus === 'error') {
       setSourceType('stock');
       setImgUrl(getFallbackImage(place.category));
@@ -100,57 +93,39 @@ const GooglePlaceImage = memo(({ place, mapsStatus, index = 0 }: { place: TripRe
       return;
     }
 
-    // Stagger image loads to avoid rate limiting
-    // Use place title hash to create consistent but distributed delays
     const titleHash = place.title.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    const baseDelay = (titleHash % 10) * 250; // 0-2250ms spread
-    const delay = baseDelay + (index * 100); // Add index-based delay
+    const delay = ((titleHash % 10) * 200) + (index * 50);
     
     const timer = setTimeout(async () => {
       if (!isMounted) return;
       
-      // Try to fetch Place Photo if we have a placeId and Maps API is loaded
       if (place.placeId && mapsStatus === 'loaded') {
         try {
-          // Remove 'places/' prefix if it exists (new API expects just the ID)
           const cleanPlaceId = place.placeId.replace(/^places\//, '');
-          console.log(`[${place.title}] Fetching Place Photo for placeId:`, cleanPlaceId);
-          
-          // Use new Places API
-          const { Place } = await google.maps.importLibrary("places") as google.maps.PlacesLibrary;
+          const { Place } = await google.maps.importLibrary("places") as any;
           const placeInstance = new Place({ id: cleanPlaceId });
-          
-          // Fetch photos field
           await placeInstance.fetchFields({ fields: ['photos'] });
           
           if (!isMounted) return;
-          
           if (placeInstance.photos && placeInstance.photos.length > 0) {
             const photoUrl = placeInstance.photos[0].getURI({ maxWidth: 800, maxHeight: 600 });
-            console.log(`[${place.title}] ✓ Place Photo loaded`);
             setImgUrl(photoUrl);
             setSourceType('official');
             setLoading(false);
             return;
-          } else {
-            console.warn(`[${place.title}] No photos available for this place`);
           }
         } catch (err) {
-          console.warn(`[${place.title}] Place Photo fetch error:`, err);
+          console.warn(`Place Photo fetch error:`, err);
         }
       }
       
-      // If we have a photoUrl (backup), use it
       if (place.photoUrl) {
-        console.log(`[${place.title}] Loading backup photo`);
         setImgUrl(place.photoUrl);
         setSourceType('official');
         setLoading(false);
         return;
       }
 
-      // Fallback to stock images
-      console.log(`[${place.title}] Using stock image`);
       setImgUrl(getFallbackImage(place.category));
       setSourceType('stock');
       setLoading(false);
@@ -164,38 +139,25 @@ const GooglePlaceImage = memo(({ place, mapsStatus, index = 0 }: { place: TripRe
 
   if (loading) {
     return (
-      <div className="w-full h-full bg-slate-100 flex items-center justify-center relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-slate-100 via-slate-200 to-slate-100 animate-shimmer" style={{ backgroundSize: '200% 100%' }}></div>
-        <Loader2 className="w-8 h-8 text-slate-300 animate-spin relative z-10" />
+      <div className="w-full h-full bg-slate-100 flex items-center justify-center overflow-hidden">
+        <div className="w-full h-full bg-slate-200 animate-pulse" />
       </div>
     );
   }
 
   return (
-    <div className="w-full h-full relative overflow-hidden group bg-slate-200">
+    <div className="w-full h-full relative overflow-hidden group">
       <img 
         src={imgUrl || getFallbackImage(place.category)} 
         alt={place.title} 
-        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-[2000ms] ease-out brightness-[0.9] group-hover:brightness-100"
+        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000 ease-out brightness-[0.95]"
         onLoad={(e) => (e.currentTarget.style.opacity = '1')}
-        style={{ opacity: 0, transition: 'opacity 0.5s ease-out' }}
-        onError={(e) => {
-           const target = e.currentTarget as HTMLImageElement;
-           const fallback = getFallbackImage(place.category);
-           console.log(`[${place.title}] Image load failed, falling back to stock. Failed URL:`, target.src);
-           if (target.src !== fallback) {
-              target.src = fallback;
-              setSourceType('stock');
-           }
-        }}
+        style={{ opacity: 0, transition: 'opacity 0.7s ease-out' }}
       />
-      
-      <div className="absolute bottom-3 left-3 flex items-center gap-1.5 px-2.5 py-1.5 bg-black/50 backdrop-blur-xl rounded-lg border border-white/10 opacity-0 group-hover:opacity-100 transition-all transform translate-y-2 group-hover:translate-y-0">
-        {sourceType === 'official' && <Camera className="w-3 h-3 text-white" />}
-        {sourceType === 'map' && <MapIcon2 className="w-3 h-3 text-white" />}
-        {sourceType === 'stock' && <ImageIcon className="w-3 h-3 text-white" />}
-        <span className="text-[9px] font-black text-white uppercase tracking-widest">
-          {sourceType === 'official' ? "Verified Photo" : (sourceType === 'map' ? "Location Map" : "Illustration")}
+      <div className="absolute bottom-2 left-2 px-2 py-1 bg-black/40 backdrop-blur-md rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
+        <span className="text-[8px] font-bold text-white uppercase tracking-widest flex items-center gap-1">
+          {sourceType === 'official' ? <Camera className="w-2.5 h-2.5" /> : <ImageIcon className="w-2.5 h-2.5" />}
+          {sourceType}
         </span>
       </div>
     </div>
@@ -218,9 +180,8 @@ const App: React.FC = () => {
 
   const suggestionsEndRef = useRef<HTMLDivElement>(null);
 
-  // Load Google Maps API with handling for InvalidKeyMapError
-  useEffect(() => {
-    // Prioritize specific Maps key, fall back to general API_KEY
+  const loadMapsScript = useCallback(() => {
+    setMapsStatus('loading');
     const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.API_KEY;
     
     if (!apiKey) {
@@ -228,40 +189,33 @@ const App: React.FC = () => {
       return;
     }
 
-    if ((window as any).google && (window as any).google.maps) {
-      setMapsStatus('loaded');
-      return;
-    }
-
-    // Define auth failure handler globaly
-    (window as any).gm_authFailure = () => {
-      console.warn("MapLayer AI: Google Maps Auth Failed. Switching to Lite Mode.");
-      setMapsStatus('error');
-    };
+    const scriptId = 'google-maps-sdk';
+    const existingScript = document.getElementById(scriptId);
+    if (existingScript) existingScript.remove();
 
     const script = document.createElement('script');
+    script.id = scriptId;
     script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&v=weekly`;
     script.async = true;
     script.defer = true;
     
     script.onload = () => {
-       // Wait a tick to ensure auth didn't fail immediately
-       setTimeout(() => {
-         if (mapsStatus !== 'error') setMapsStatus('loaded');
-       }, 500);
+      setTimeout(() => {
+        if (window.google && window.google.maps) {
+          setMapsStatus('loaded');
+        } else {
+          setMapsStatus('error');
+        }
+      }, 500);
     };
     
-    script.onerror = () => {
-      console.warn("Google Maps Script Load Error");
-      setMapsStatus('error');
-    };
-
+    script.onerror = () => setMapsStatus('error');
     document.head.appendChild(script);
+  }, []);
 
-    return () => {
-      // cleanup handled by browser
-    };
-  }, []); // Run once
+  useEffect(() => {
+    loadMapsScript();
+  }, [loadMapsScript]);
 
   useEffect(() => {
     if (navigator.geolocation) {
@@ -283,12 +237,11 @@ const App: React.FC = () => {
         ...pendingSuggestions.map(p => p.title),
         ...savedLayers.flatMap(l => l.places.map(p => p.title))
       ];
-
       const { suggestions } = await fetchSuggestions(currentCity, query, lang, excludeTitles, userLocation);
       
       if (isLoadMore) {
         setPendingSuggestions(prev => [...prev, ...suggestions]);
-        setTimeout(() => suggestionsEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 200);
+        setTimeout(() => suggestionsEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 300);
       } else {
         setPendingSuggestions(suggestions);
       }
@@ -320,80 +273,75 @@ const App: React.FC = () => {
     if (savedLayers.length === 0) return;
     const tripData: TripData = {
       city: savedLayers.map(l => l.name).join(', '),
-      summary: "Personalized trip map.",
+      summary: "Your AI-powered travel itinerary.",
       layers: savedLayers,
       sources: [],
       language: lang
     };
     const kml = generateKml(tripData);
-    downloadFile(kml, `Trip_${currentCity || 'Export'}.kml`, "application/vnd.google-earth.kml+xml");
+    downloadFile(kml, `Trip_${currentCity || 'Planner'}.kml`, "application/vnd.google-earth.kml+xml");
   };
 
   return (
-    <div className={`min-h-screen bg-slate-50 flex flex-col ${isRtl ? 'font-sans' : ''}`} dir={isRtl ? 'rtl' : 'ltr'}>
-      <header className="bg-white border-b border-slate-200 h-16 shrink-0 z-50 px-4 sm:px-6 lg:px-8 flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-2">
-          <div className="bg-indigo-600 p-2 rounded-xl">
+    <div className={`min-h-screen bg-slate-50 flex flex-col antialiased ${isRtl ? 'font-sans' : ''}`} dir={isRtl ? 'rtl' : 'ltr'}>
+      {/* Premium Header */}
+      <header className="sticky top-0 z-50 glass h-18 px-6 lg:px-12 flex items-center justify-between border-b border-slate-200/50">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200">
             <MapIcon className="text-white w-5 h-5" />
           </div>
-          <h1 className="text-xl font-black bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent tracking-tight">
+          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
             {t.title}
           </h1>
         </div>
         
         <div className="flex items-center gap-4">
-          {mapsStatus === 'error' && (
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-amber-50 text-amber-600 rounded-lg text-[10px] font-bold uppercase tracking-wide border border-amber-100">
-               <AlertTriangle className="w-3 h-3" />
-               {t.apiError}
-            </div>
-          )}
-          <div className="flex items-center bg-slate-100 rounded-xl p-1">
-            <button onClick={() => setLang('en')} className={`px-3 py-1 text-[10px] font-black rounded-lg transition-all ${lang === 'en' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500'}`}>EN</button>
-            <button onClick={() => setLang('he')} className={`px-3 py-1 text-[10px] font-black rounded-lg transition-all ${lang === 'he' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500'}`}>עב</button>
+          <div className="flex bg-slate-100/80 rounded-xl p-1 border border-slate-200/50">
+            <button onClick={() => setLang('en')} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${lang === 'en' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500'}`}>EN</button>
+            <button onClick={() => setLang('he')} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${lang === 'he' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500'}`}>עב</button>
           </div>
+          
           <button 
             onClick={() => { setSavedLayers([]); setCurrentCity(''); setPendingSuggestions([]); setQuery(''); }}
-            className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-red-500 transition-colors"
+            className="p-2 text-slate-400 hover:text-red-500 transition-colors"
           >
-            {t.reset}
+            <Trash2 className="w-5 h-5" />
           </button>
         </div>
       </header>
 
-      <main className="flex-1 overflow-hidden flex flex-col lg:flex-row">
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-10 bg-white lg:border-r border-slate-200">
-          <div className="max-w-3xl mx-auto space-y-10">
-            <div className="space-y-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-indigo-50 rounded-lg">
-                   <Sparkles className="w-6 h-6 text-indigo-600" />
-                </div>
-                <h2 className="text-3xl font-black text-slate-900 tracking-tight">{t.builder}</h2>
+      <main className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+        {/* Discovery Area */}
+        <div className="flex-1 overflow-y-auto p-6 lg:p-12">
+          <div className="max-w-4xl mx-auto space-y-12">
+            <section className="space-y-8">
+              <div className="space-y-2">
+                <h2 className="text-4xl font-black text-slate-900">{t.builder}</h2>
+                <p className="text-slate-500 font-medium">Use AI to curate the perfect local experience.</p>
               </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] ml-1">{t.cityPrompt}</label>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="relative">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">{t.cityPrompt}</label>
                   <div className="relative group">
-                    <MapPin className={`absolute ${isRtl ? 'right-4' : 'left-4'} top-4 w-4 h-4 text-slate-400 group-focus-within:text-indigo-600 transition-colors`} />
+                    <MapPin className={`absolute ${isRtl ? 'right-4' : 'left-4'} top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-indigo-600 transition-colors`} />
                     <input 
                       type="text" 
-                      placeholder="e.g. Kyoto"
-                      className={`w-full ${isRtl ? 'pr-11 pl-4' : 'pl-11 pr-4'} py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 transition-all outline-none font-bold text-slate-800 placeholder:text-slate-300`}
+                      placeholder="e.g. Amsterdam"
+                      className={`w-full ${isRtl ? 'pr-12' : 'pl-12'} py-4 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-600 transition-all outline-none font-bold text-slate-800 shadow-sm`}
                       value={currentCity}
                       onChange={(e) => setCurrentCity(e.target.value)}
                     />
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] ml-1">{t.queryPrompt}</label>
+                <div className="relative">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">{t.queryPrompt}</label>
                   <div className="relative group">
-                    <MessageSquare className={`absolute ${isRtl ? 'right-4' : 'left-4'} top-4 w-4 h-4 text-slate-400 group-focus-within:text-indigo-600 transition-colors`} />
+                    <MessageSquare className={`absolute ${isRtl ? 'right-4' : 'left-4'} top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-indigo-600 transition-colors`} />
                     <input 
                       type="text" 
                       placeholder={t.queryPlaceholder}
-                      className={`w-full ${isRtl ? 'pr-11 pl-4' : 'pl-11 pr-4'} py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-50 focus:border-indigo-500 transition-all outline-none font-medium text-slate-800 placeholder:text-slate-300`}
+                      className={`w-full ${isRtl ? 'pr-12' : 'pl-12'} py-4 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-600 transition-all outline-none font-medium text-slate-800 shadow-sm`}
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
                       onKeyPress={(e) => e.key === 'Enter' && handleSearch(null)}
@@ -401,65 +349,66 @@ const App: React.FC = () => {
                   </div>
                 </div>
               </div>
+
               <button 
                 onClick={() => handleSearch(null)}
                 disabled={loading || !currentCity || !query}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-100 disabled:text-slate-400 text-white font-black py-4.5 rounded-2xl flex items-center justify-center gap-3 transition-all shadow-xl shadow-indigo-100 active:scale-[0.98]"
+                className="w-full bg-slate-900 hover:bg-black disabled:bg-slate-100 disabled:text-slate-400 text-white font-black py-5 rounded-2xl flex items-center justify-center gap-3 transition-all shadow-xl active:scale-[0.99]"
               >
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Compass className="w-5 h-5" />}
+                {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Compass className="w-6 h-6" />}
                 <span className="text-lg uppercase tracking-widest">{loading ? t.searching : t.findPlaces}</span>
               </button>
-            </div>
+            </section>
 
-            <div className="space-y-6">
+            {/* Results Grid */}
+            <div className="space-y-8 pb-20">
               {pendingSuggestions.length > 0 && (
                 <>
-                  <div className="flex items-center justify-between px-2">
-                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
-                       <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+                    <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                       <Sparkles className="w-4 h-4 text-indigo-500" />
                        {t.topRated}
                     </h3>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-6 duration-700">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
                     {pendingSuggestions.map((place, idx) => (
-                      <div key={idx} className="bg-white rounded-[2rem] border border-slate-200 overflow-hidden shadow-sm hover:shadow-2xl hover:border-indigo-200 transition-all group flex flex-col">
-                        <div className="relative h-56 overflow-hidden bg-slate-100">
+                      <div key={idx} className="bg-white rounded-[2.5rem] border border-slate-100 overflow-hidden shadow-sm hover:shadow-2xl hover:-translate-y-1 transition-all duration-500 group">
+                        <div className="relative h-64 bg-slate-100">
                            <GooglePlaceImage place={place} mapsStatus={mapsStatus} index={idx} />
-                           
-                           <div className="absolute top-4 left-4 flex flex-col gap-2">
-                              <span className="text-[9px] font-black uppercase tracking-widest text-indigo-600 bg-white/95 px-2.5 py-1 rounded-full shadow-sm">
+                           <div className="absolute top-5 left-5 right-5 flex justify-between items-start">
+                              <span className="px-3 py-1.5 bg-white/90 backdrop-blur-md rounded-xl text-[10px] font-black uppercase text-indigo-600 shadow-sm">
                                 {place.category}
                               </span>
                               {place.rating && (
-                                <div className="flex items-center gap-1 bg-amber-400 text-white px-2.5 py-1 rounded-full text-[10px] font-black shadow-sm">
-                                  <Star className="w-3 h-3 fill-white" />
+                                <div className="flex items-center gap-1 bg-amber-400 text-white px-3 py-1.5 rounded-xl text-[11px] font-bold shadow-md">
+                                  <Star className="w-3.5 h-3.5 fill-white" />
                                   {place.rating.toFixed(1)}
                                 </div>
                               )}
                            </div>
                         </div>
-                        <div className="p-6 flex-1 flex flex-col">
-                          <h4 className="font-black text-slate-900 text-xl mb-2 group-hover:text-indigo-600 transition-colors">{place.title}</h4>
-                          <p className="text-sm text-slate-500 leading-relaxed line-clamp-3 mb-4 flex-1">{place.description}</p>
+                        <div className="p-8 space-y-4">
+                          <h4 className="font-extrabold text-slate-900 text-2xl leading-tight group-hover:text-indigo-600 transition-colors">{place.title}</h4>
+                          <p className="text-slate-500 text-sm leading-relaxed line-clamp-3 font-medium">{place.description}</p>
                           
-                          <div className="flex items-center justify-between mt-auto pt-4 border-t border-slate-50">
+                          <div className="pt-4 flex items-center justify-between gap-4">
                              {place.mapUrl ? (
-                               <a href={place.mapUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-[10px] font-black text-slate-400 hover:text-indigo-600 transition-colors uppercase tracking-widest">
-                                 <ExternalLink className="w-3 h-3" />
-                                 Google Maps
+                               <a href={place.mapUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-indigo-600 transition-colors">
+                                 <MapPin className="w-4 h-4" />
+                                 View Map
                                </a>
-                             ) : <div></div>}
+                             ) : <div />}
                              <div className="flex gap-2">
                                <button 
                                  onClick={() => setPendingSuggestions(prev => prev.filter(p => p.title !== place.title))}
-                                 className="p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                                 className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all"
                                  title={t.dismiss}
                                >
                                  <X className="w-5 h-5" />
                                </button>
                                <button 
                                  onClick={() => savePlace(place)}
-                                 className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition-all shadow-lg shadow-indigo-100 flex items-center gap-2 text-xs font-black uppercase tracking-widest"
+                                 className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-2xl transition-all shadow-lg shadow-indigo-100 flex items-center gap-2 text-xs font-black uppercase tracking-widest active:scale-95"
                                >
                                  <Plus className="w-4 h-4" />
                                  {t.savePlace}
@@ -471,13 +420,13 @@ const App: React.FC = () => {
                     ))}
                   </div>
 
-                  <div className="pt-8 pb-12 flex justify-center" ref={suggestionsEndRef}>
+                  <div className="flex justify-center pt-8" ref={suggestionsEndRef}>
                     <button 
                       onClick={() => handleSearch(null, true)}
                       disabled={loadingMore}
-                      className="flex items-center gap-3 px-8 py-4 rounded-2xl bg-slate-900 hover:bg-black text-white font-black text-xs uppercase tracking-[0.2em] transition-all shadow-2xl active:scale-95 disabled:opacity-50"
+                      className="group flex items-center gap-3 px-10 py-5 rounded-2xl bg-white border border-slate-200 hover:border-indigo-600 text-slate-900 font-black text-xs uppercase tracking-widest transition-all shadow-sm hover:shadow-md disabled:opacity-50"
                     >
-                      {loadingMore ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                      {loadingMore ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4 group-hover:rotate-180 transition-transform duration-500" />}
                       {t.loadMore}
                     </button>
                   </div>
@@ -485,13 +434,16 @@ const App: React.FC = () => {
               )}
 
               {!loading && pendingSuggestions.length === 0 && (
-                <div className="py-24 text-center space-y-6">
-                   <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center mx-auto animate-bounce duration-1000">
-                      <Search className="w-10 h-10 text-indigo-300" />
+                <div className="py-24 text-center space-y-8 flex flex-col items-center">
+                   <div className="relative">
+                      <div className="w-32 h-32 bg-indigo-50 rounded-[3rem] rotate-12 absolute -inset-2 opacity-50" />
+                      <div className="w-32 h-32 bg-white rounded-[3rem] shadow-sm flex items-center justify-center relative border border-slate-100">
+                        <MapPin className="w-12 h-12 text-indigo-600" />
+                      </div>
                    </div>
-                   <div>
-                      <p className="text-slate-400 font-black text-lg uppercase tracking-widest">{currentCity ? "I'm ready to search!" : t.noCity}</p>
-                      <p className="text-slate-300 text-sm mt-2">Enter a city and what you're in the mood for.</p>
+                   <div className="space-y-2">
+                      <p className="text-slate-900 font-black text-2xl tracking-tight">{currentCity ? "Ready to explore?" : t.noCity}</p>
+                      <p className="text-slate-500 max-w-xs mx-auto text-sm font-medium">Tell us your destination and what you love to do there.</p>
                    </div>
                 </div>
               )}
@@ -499,70 +451,68 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        <div className="lg:w-[420px] shrink-0 bg-slate-50 overflow-y-auto p-4 sm:p-6 lg:p-8 flex flex-col h-full border-l border-slate-100">
-          <div className="flex items-center justify-between mb-8">
+        {/* Itinerary Sidebar */}
+        <aside className="lg:w-[440px] shrink-0 bg-white border-l border-slate-200 overflow-y-auto p-8 flex flex-col">
+          <div className="flex items-center justify-between mb-10">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-slate-900 rounded-lg">
-                 <Layers className="w-4 h-4 text-white" />
+              <div className="w-10 h-10 bg-slate-900 rounded-2xl flex items-center justify-center shadow-lg">
+                 <Layers className="w-5 h-5 text-white" />
               </div>
-              <h3 className="text-xl font-black text-slate-900 tracking-tight">{t.savedMap}</h3>
+              <h3 className="text-2xl font-black text-slate-900 tracking-tight">{t.savedMap}</h3>
             </div>
             {savedLayers.length > 0 && (
-              <div className="bg-indigo-600 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-lg shadow-indigo-100">
-                {savedLayers.reduce((acc, l) => acc + l.places.length, 0)} PLACES
+              <div className="bg-indigo-600 text-white text-[10px] font-black px-3 py-1.5 rounded-full">
+                {savedLayers.reduce((acc, l) => acc + l.places.length, 0)} SPOTS
               </div>
             )}
           </div>
 
-          <div className="flex-1 space-y-10">
+          <div className="flex-1 space-y-12">
             {savedLayers.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center py-20">
-                <div className="bg-white p-6 rounded-full shadow-sm mb-6 border border-slate-100">
-                  <MapPin className="w-10 h-10 text-slate-200" />
-                </div>
-                <p className="text-xs font-black text-slate-400 uppercase tracking-widest leading-loose">{t.noPlaces}</p>
+              <div className="h-full flex flex-col items-center justify-center text-center py-24 opacity-40">
+                <Search className="w-12 h-12 text-slate-300 mb-6" />
+                <p className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">{t.noPlaces}</p>
               </div>
             ) : (
               savedLayers.map((layer, idx) => (
-                <div key={idx} className="space-y-4 animate-in fade-in slide-in-from-right-6 duration-500">
+                <div key={idx} className="space-y-5 animate-in fade-in slide-in-from-right-8 duration-500">
                   <div className="flex items-center gap-3 group">
-                    <div className="w-8 h-8 rounded-xl bg-indigo-100 flex items-center justify-center font-black text-indigo-600 text-[10px]">
-                      {idx + 1}
-                    </div>
-                    <h4 className="text-xs font-black uppercase text-slate-500 tracking-[0.2em]">{layer.name}</h4>
-                    <div className="flex-1 h-px bg-slate-200 group-hover:bg-indigo-200 transition-colors" />
+                    <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">{layer.name}</span>
+                    <div className="flex-1 h-px bg-slate-100" />
+                    <ChevronRight className="w-4 h-4 text-slate-300" />
                   </div>
                   <div className="space-y-3">
                     {layer.places.map((place, pIdx) => (
-                      <div key={pIdx} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all group relative">
-                        <div className="flex justify-between items-start gap-4">
-                          <div className="flex-1 min-w-0">
-                            <h5 className="font-bold text-slate-900 text-sm truncate">{place.title}</h5>
-                            <div className="flex items-center gap-2 mt-1">
-                               <span className="text-[8px] font-black text-indigo-500 uppercase tracking-tighter">{place.category}</span>
-                               {place.rating && (
-                                 <span className="flex items-center gap-0.5 text-[8px] font-black text-amber-500">
-                                   <Star className="w-2 h-2 fill-amber-500" />
-                                   {place.rating}
-                                 </span>
-                               )}
-                            </div>
-                          </div>
-                          <button 
-                            onClick={() => {
-                               const newLayers = savedLayers.map(l => {
-                                  if (l.name === layer.name) {
-                                     return { ...l, places: l.places.filter(p => p.title !== place.title) };
-                                  }
-                                  return l;
-                               }).filter(l => l.places.length > 0);
-                               setSavedLayers(newLayers);
-                            }}
-                            className="p-1.5 text-slate-200 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                      <div key={pIdx} className="bg-slate-50/50 p-5 rounded-3xl border border-slate-100 shadow-sm hover:bg-white hover:shadow-lg transition-all group flex items-start gap-4">
+                        <div className="w-12 h-12 rounded-2xl overflow-hidden shrink-0">
+                           <GooglePlaceImage place={place} mapsStatus={mapsStatus} index={pIdx} />
                         </div>
+                        <div className="flex-1 min-w-0">
+                          <h5 className="font-bold text-slate-900 text-sm truncate">{place.title}</h5>
+                          <div className="flex items-center gap-2 mt-1">
+                             <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">{place.category}</span>
+                             {place.rating && (
+                               <span className="flex items-center gap-0.5 text-[9px] font-black text-amber-500">
+                                 <Star className="w-2.5 h-2.5 fill-amber-500" />
+                                 {place.rating}
+                               </span>
+                             )}
+                          </div>
+                        </div>
+                        <button 
+                          onClick={() => {
+                             const newLayers = savedLayers.map(l => {
+                                if (l.name === layer.name) {
+                                   return { ...l, places: l.places.filter(p => p.title !== place.title) };
+                                }
+                                return l;
+                             }).filter(l => l.places.length > 0);
+                             setSavedLayers(newLayers);
+                          }}
+                          className="p-1.5 text-slate-300 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -571,35 +521,24 @@ const App: React.FC = () => {
             )}
           </div>
 
-          <div className="mt-8 space-y-4 shrink-0">
-            <div className="bg-indigo-900 text-indigo-200 p-5 rounded-2xl shadow-inner flex gap-4">
-              <Info className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
-              <p className="text-[10px] font-bold leading-relaxed tracking-wide">
+          <div className="mt-12 space-y-4 shrink-0">
+            <div className="bg-slate-900 text-slate-400 p-6 rounded-[2rem] shadow-xl flex gap-4">
+              <Info className="w-6 h-6 text-indigo-400 shrink-0" />
+              <p className="text-[10px] font-bold leading-relaxed tracking-wide text-slate-300">
                 {t.layersTip}
               </p>
             </div>
             <button 
               disabled={savedLayers.length === 0}
               onClick={handleDownload}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white font-black py-4.5 rounded-2xl flex items-center justify-center gap-3 transition-all shadow-2xl shadow-indigo-100 active:scale-[0.98]"
+              className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-100 disabled:text-slate-400 text-white font-black py-5 rounded-[2rem] flex items-center justify-center gap-3 transition-all shadow-xl shadow-indigo-200 active:scale-[0.98]"
             >
               <Download className="w-5 h-5" />
-              <span className="text-sm uppercase tracking-[0.2em]">{t.downloadKml}</span>
+              <span className="text-sm uppercase tracking-widest">{t.downloadKml}</span>
             </button>
           </div>
-        </div>
+        </aside>
       </main>
-      
-      {/* Global Style for the shimmer effect */}
-      <style>{`
-        @keyframes shimmer {
-          0% { background-position: -200% 0; }
-          100% { background-position: 200% 0; }
-        }
-        .animate-shimmer {
-          animation: shimmer 2s infinite linear;
-        }
-      `}</style>
     </div>
   );
 };
