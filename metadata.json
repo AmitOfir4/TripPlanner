@@ -1,5 +1,5 @@
 {
-  "name": "MapLayer AI - Custom Trip Planner",
+  "name": "TripPlanner",
   "description": "Create personalized Google Maps trip layers based on your interests. Input a city and what you love, and let Gemini generate themed layers with real-time Google Maps grounding.",
   "requestFramePermissions": [
     "geolocation"
