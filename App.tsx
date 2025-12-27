@@ -4,11 +4,15 @@ import {
   MapPin, Search, Compass, Layers, ExternalLink, Loader2, 
   Sparkles, Map as MapIcon, Download, Info, 
   Plus, Trash2, X, Star, RefreshCw, MessageSquare, Image as ImageIcon,
-  Camera, Map as MapIcon2, AlertTriangle, ChevronRight, ChevronLeft
+  Camera, Map as MapIcon2, AlertTriangle, ChevronRight, ChevronLeft, LogIn, Upload
 } from 'lucide-react';
+import { useGoogleLogin } from '@react-oauth/google';
 import { fetchSuggestions } from './geminiService';
 import { TripData, Language, TripRecommendation, TripLayer } from './types';
 import { generateKml, downloadFile } from './utils';
+import { fetchMyMaps, downloadMyMapAsKML, MyMapsFile } from './googleDriveService';
+import { parseKMLToTripData } from './kmlParser';
+import { GoogleUser } from './googleAuthService';
 
 declare var google: any;
 declare var window: any;
@@ -224,8 +228,123 @@ const App: React.FC = () => {
   const [savedLayers, setSavedLayers] = useState<TripLayer[]>([]);
   const [userLocation, setUserLocation] = useState<{ latitude: number, longitude: number } | undefined>();
   const [mapsStatus, setMapsStatus] = useState<'loading' | 'loaded' | 'error'>('loading');
+  
+  // Google OAuth & Import states
+  const [googleUser, setGoogleUser] = useState<GoogleUser | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [myMaps, setMyMaps] = useState<MyMapsFile[]>([]);
+  const [loadingMaps, setLoadingMaps] = useState(false);
+  const [importingMap, setImportingMap] = useState(false);
 
   const suggestionsEndRef = useRef<HTMLDivElement>(null);
+
+  // Google Sign-In
+  const login = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      try {
+        // Fetch user info
+        const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+          headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+        });
+        const userInfo = await userInfoResponse.json();
+        
+        setGoogleUser({
+          email: userInfo.email,
+          name: userInfo.name,
+          picture: userInfo.picture,
+          accessToken: tokenResponse.access_token,
+        });
+      } catch (error) {
+        console.error('Error fetching user info:', error);
+      }
+    },
+    scope: 'https://www.googleapis.com/auth/drive.readonly',
+  });
+
+  const handleImportFromMyMaps = async () => {
+    if (!googleUser) {
+      login();
+      return;
+    }
+    
+    setShowImportModal(true);
+    setLoadingMaps(true);
+    
+    try {
+      const maps = await fetchMyMaps(googleUser.accessToken);
+      setMyMaps(maps);
+    } catch (error) {
+      console.error('Error fetching My Maps:', error);
+      alert('Failed to load your My Maps. Please try again.');
+    } finally {
+      setLoadingMaps(false);
+    }
+  };
+
+  const handleSelectMap = async (mapFile: MyMapsFile) => {
+    if (!googleUser) return;
+    
+    setImportingMap(true);
+    try {
+      // Try to download and import the map automatically
+      const kmlText = await downloadMyMapAsKML(mapFile.id, googleUser.accessToken);
+      const { layers, cityName } = parseKMLToTripData(kmlText);
+      
+      // Merge imported layers with existing ones
+      setSavedLayers(prev => [...prev, ...layers]);
+      if (!currentCity) {
+        setCurrentCity(cityName);
+      }
+      
+      setShowImportModal(false);
+      alert(`Successfully imported "${mapFile.name}" with ${layers.reduce((acc, l) => acc + l.places.length, 0)} places!`);
+    } catch (error) {
+      console.error('Error importing map:', error);
+      
+      // Show fallback instructions with option to use manual upload
+      const publicKmlUrl = `https://www.google.com/maps/d/u/0/kml?forcekml=1&mid=${mapFile.id}`;
+      const useManualUpload = confirm(
+        `Automatic import failed. Would you like to download the KML manually?\n\n` +
+        `Click OK to open the map, then:\n` +
+        `1. Click the three dots menu (⋮)\n` +
+        `2. Select "Export to KML/KMZ"\n` +
+        `3. Download the file\n` +
+        `4. Use the "Upload KML File" button below\n\n` +
+        `Or click Cancel to try again later.`
+      );
+      
+      if (useManualUpload) {
+        window.open(mapFile.webViewLink, '_blank');
+      }
+    } finally {
+      setImportingMap(false);
+    }
+  };
+
+  const handleKMLFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Reset the input so the same file can be uploaded again
+    event.target.value = '';
+
+    try {
+      const kmlText = await file.text();
+      const { layers, cityName } = parseKMLToTripData(kmlText);
+      
+      // Merge imported layers with existing ones
+      setSavedLayers(prev => [...prev, ...layers]);
+      if (!currentCity) {
+        setCurrentCity(cityName);
+      }
+      
+      setShowImportModal(false);
+      alert(`Successfully imported "${file.name}" with ${layers.reduce((acc, l) => acc + l.places.length, 0)} places!`);
+    } catch (error) {
+      console.error('Error parsing KML file:', error);
+      alert('Failed to parse KML file. Please make sure it\'s a valid KML file from Google My Maps.');
+    }
+  };
 
   const loadMapsScript = useCallback(() => {
     setMapsStatus('loading');
@@ -343,6 +462,21 @@ const App: React.FC = () => {
         </div>
         
         <div className="flex items-center gap-4">
+          {googleUser ? (
+            <div className="flex items-center gap-3">
+              <img src={googleUser.picture} alt={googleUser.name} className="w-8 h-8 rounded-full" />
+              <span className="text-xs font-medium text-slate-600 hidden md:inline">{googleUser.name}</span>
+            </div>
+          ) : null}
+          
+          <button
+            onClick={handleImportFromMyMaps}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl text-xs font-bold transition-all"
+          >
+            {googleUser ? <Upload className="w-4 h-4" /> : <LogIn className="w-4 h-4" />}
+            {googleUser ? 'Import' : 'Sign In'}
+          </button>
+          
           <div className="flex bg-slate-100/80 rounded-xl p-1 border border-slate-200/50">
             <button onClick={() => setLang('en')} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${lang === 'en' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500'}`}>EN</button>
             <button onClick={() => setLang('he')} className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${lang === 'he' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500'}`}>עב</button>
@@ -586,6 +720,75 @@ const App: React.FC = () => {
           </div>
         </aside>
       </main>
+
+      {/* Import from My Maps Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] p-4" onClick={() => setShowImportModal(false)}>
+          <div className="bg-white rounded-[2rem] p-8 max-w-2xl w-full max-h-[80vh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-black text-slate-900">Import from My Maps</h2>
+              <button onClick={() => setShowImportModal(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            {loadingMaps ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+              </div>
+            ) : myMaps.length === 0 ? (
+              <div className="py-16 text-center space-y-4">
+                <MapIcon2 className="w-16 h-16 text-slate-300 mx-auto" />
+                <p className="text-slate-500 font-medium">No saved maps found in your Google My Maps</p>
+                <p className="text-xs text-slate-400">Create maps at maps.google.com and they'll appear here</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {myMaps.map((map) => (
+                  <button
+                    key={map.id}
+                    onClick={() => handleSelectMap(map)}
+                    disabled={importingMap}
+                    className="w-full p-5 bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-600 rounded-2xl transition-all text-left group disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center shrink-0">
+                        <MapIcon className="w-6 h-6 text-indigo-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{map.name}</h3>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Modified: {new Date(map.modifiedTime).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-indigo-600 transition-colors shrink-0" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* File Upload Button */}
+            <div className="mt-6 pt-6 border-t border-slate-200">
+              <label className="block">
+                <input
+                  type="file"
+                  accept=".kml,.kmz"
+                  onChange={handleKMLFileUpload}
+                  className="hidden"
+                />
+                <div className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-2xl flex items-center justify-center gap-3 transition-all shadow-lg cursor-pointer">
+                  <Upload className="w-5 h-5" />
+                  <span>Upload KML File</span>
+                </div>
+              </label>
+              <p className="text-xs text-slate-400 text-center mt-3">
+                Download your map from Google My Maps, then upload the KML file here
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
