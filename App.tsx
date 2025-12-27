@@ -447,7 +447,25 @@ const App: React.FC = () => {
       const fileName = `Trip_${currentCity || 'Planner'}_${new Date().toISOString().split('T')[0]}.kml`;
       
       const result = await uploadKMLToDrive(kml, fileName, googleUser.accessToken);
-      alert(`Successfully uploaded to Google Drive!\nYou can view it at: ${result.webViewLink}`);
+      
+      // Open Google My Maps to import the file
+      const myMapsUrl = 'https://mymaps.google.com/';
+      window.open(myMapsUrl, '_blank');
+      
+      // Show instructions
+      setTimeout(() => {
+        alert(
+          `✅ KML uploaded successfully!\n\n` +
+          `Google My Maps is now opening...\n\n` +
+          `To import your map:\n` +
+          `1. Click "Create a New Map" (or open an existing map)\n` +
+          `2. Click "Import" in the left menu\n` +
+          `3. Select "Google Drive"\n` +
+          `4. Find and select: "${fileName}"\n` +
+          `5. Click "Select" to import\n\n` +
+          `Your map layers will be imported!`
+        );
+      }, 500);
     } catch (error) {
       console.error('Error uploading to Drive:', error);
       alert('Failed to upload to Google Drive. Please try again.');
