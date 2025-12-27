@@ -10,7 +10,7 @@ import { useGoogleLogin } from '@react-oauth/google';
 import { fetchSuggestions } from './geminiService';
 import { TripData, Language, TripRecommendation, TripLayer } from './types';
 import { generateKml, downloadFile } from './utils';
-import { fetchMyMaps, downloadMyMapAsKML, MyMapsFile } from './googleDriveService';
+import { fetchMyMaps, downloadMyMapAsKML, uploadKMLToDrive, MyMapsFile } from './googleDriveService';
 import { parseKMLToTripData } from './kmlParser';
 import { GoogleUser } from './googleAuthService';
 
@@ -258,7 +258,7 @@ const App: React.FC = () => {
         console.error('Error fetching user info:', error);
       }
     },
-    scope: 'https://www.googleapis.com/auth/drive.readonly',
+    scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly',
   });
 
   const handleImportFromMyMaps = async () => {
@@ -432,6 +432,28 @@ const App: React.FC = () => {
     downloadFile(kml, `Trip_${currentCity || 'Planner'}.kml`, "application/vnd.google-earth.kml+xml");
   };
 
+  const handleUploadToDrive = async () => {
+    if (!googleUser || savedLayers.length === 0) return;
+    
+    try {
+      const tripData: TripData = {
+        city: savedLayers.map(l => l.name).join(', '),
+        summary: "Your AI-powered travel itinerary.",
+        layers: savedLayers,
+        sources: [],
+        language: lang
+      };
+      const kml = generateKml(tripData);
+      const fileName = `Trip_${currentCity || 'Planner'}_${new Date().toISOString().split('T')[0]}.kml`;
+      
+      const result = await uploadKMLToDrive(kml, fileName, googleUser.accessToken);
+      alert(`Successfully uploaded to Google Drive!\nYou can view it at: ${result.webViewLink}`);
+    } catch (error) {
+      console.error('Error uploading to Drive:', error);
+      alert('Failed to upload to Google Drive. Please try again.');
+    }
+  };
+
   return (
     <div className={`min-h-screen bg-slate-50 flex flex-col antialiased ${isRtl ? 'font-sans' : ''}`} dir={isRtl ? 'rtl' : 'ltr'}>
       {/* Premium Header */}
@@ -450,6 +472,12 @@ const App: React.FC = () => {
             <div className="flex items-center gap-3">
               <img src={googleUser.picture} alt={googleUser.name} className="w-8 h-8 rounded-full" />
               <span className="text-xs font-medium text-slate-600 hidden md:inline">{googleUser.name}</span>
+              <button
+                onClick={() => setGoogleUser(null)}
+                className="text-xs text-slate-400 hover:text-red-600 font-medium transition-colors"
+              >
+                Sign Out
+              </button>
             </div>
           ) : null}
           
@@ -701,6 +729,16 @@ const App: React.FC = () => {
               <Download className="w-5 h-5" />
               <span className="text-sm uppercase tracking-widest">{t.downloadKml}</span>
             </button>
+            {googleUser && (
+              <button 
+                disabled={savedLayers.length === 0}
+                onClick={handleUploadToDrive}
+                className="w-full bg-green-600 hover:bg-green-700 disabled:bg-slate-100 disabled:text-slate-400 text-white font-black py-5 rounded-[2rem] flex items-center justify-center gap-3 transition-all shadow-xl shadow-green-200 active:scale-[0.98]"
+              >
+                <Upload className="w-5 h-5" />
+                <span className="text-sm uppercase tracking-widest">Upload to Drive</span>
+              </button>
+            )}
           </div>
         </aside>
       </main>
