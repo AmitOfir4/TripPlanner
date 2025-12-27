@@ -297,25 +297,9 @@ const App: React.FC = () => {
       }
       
       setShowImportModal(false);
-      alert(`Successfully imported "${mapFile.name}" with ${layers.reduce((acc, l) => acc + l.places.length, 0)} places!`);
     } catch (error) {
       console.error('Error importing map:', error);
-      
-      // Show fallback instructions with option to use manual upload
-      const publicKmlUrl = `https://www.google.com/maps/d/u/0/kml?forcekml=1&mid=${mapFile.id}`;
-      const useManualUpload = confirm(
-        `Automatic import failed. Would you like to download the KML manually?\n\n` +
-        `Click OK to open the map, then:\n` +
-        `1. Click the three dots menu (⋮)\n` +
-        `2. Select "Export to KML/KMZ"\n` +
-        `3. Download the file\n` +
-        `4. Use the "Upload KML File" button below\n\n` +
-        `Or click Cancel to try again later.`
-      );
-      
-      if (useManualUpload) {
-        window.open(mapFile.webViewLink, '_blank');
-      }
+      alert('Failed to import map. Please make sure it is publicly shared or use the "Upload KML File" button.');
     } finally {
       setImportingMap(false);
     }
