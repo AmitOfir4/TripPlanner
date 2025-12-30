@@ -72,16 +72,16 @@ const getFallbackImage = (category: string) => {
   const lower = (category || '').toLowerCase();
   if (lower.includes('food') || lower.includes('restaurant') || lower.includes('cafe') || lower.includes('dining')) 
     return "https://media.istockphoto.com/id/1417838650/vector/knife-fork-silhouette-icon-vector-icon.jpg?s=612x612&w=0&k=20&c=aEC7Gqh8Fr7KC3bzhBqijGm_rgavKos6ifO1Hsh5U-U="; // Fork and knife
-  if (lower.includes('museum') || lower.includes('art') || lower.includes('history') || lower.includes('culture') || lower.includes('attraction') || lower.includes('monument')) 
-    return "https://m.media-amazon.com/images/I/714Uj0TkppL.jpg"; // Star symbol
+  if (lower.includes('museum') || lower.includes('art') || lower.includes('gallery'))
+    return "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT0VGDAlOY5W6bHDYDvuLzusoTiDWzEdNQWOg&s"; // Museum
   if (lower.includes('shop') || lower.includes('market') || lower.includes('mall')) 
     return "https://www.creativefabrica.com/wp-content/uploads/2021/03/02/Shopping-bag-Hand-holding-a-shopping-Graphics-9096002-1.png"; // Shopping cart
   if (lower.includes('beach') || lower.includes('sea')) 
-    return "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80";
+    return "https://us.123rf.com/450wm/rensetiawan/rensetiawan2510/rensetiawan251053561/254806929-beach-chair-and-sun-lounger-icon-vector-illustration.jpg?ver=6";
   return "https://m.media-amazon.com/images/I/714Uj0TkppL.jpg"; 
 };
 
-const GooglePlaceImage = memo(({ place, mapsStatus, index = 0 }: { place: TripRecommendation, mapsStatus: 'loading' | 'loaded' | 'error', index?: number }) => {
+const GooglePlaceImage = memo(({ place, index = 0 }: { place: TripRecommendation, index?: number }) => {
   // Use category-based default image only
   const imageUrl = getFallbackImage(place.category);
 
@@ -116,7 +116,6 @@ const App: React.FC = () => {
   const [pendingSuggestions, setPendingSuggestions] = useState<TripRecommendation[]>([]);
   const [savedLayers, setSavedLayers] = useState<TripLayer[]>([]);
   const [userLocation, setUserLocation] = useState<{ latitude: number, longitude: number } | undefined>();
-  const [mapsStatus, setMapsStatus] = useState<'loading' | 'loaded' | 'error'>('loading');
   
   // Google OAuth & Import states
   const [googleUser, setGoogleUser] = useState<GoogleUser | null>(null);
@@ -124,6 +123,12 @@ const App: React.FC = () => {
   const [myMaps, setMyMaps] = useState<MyMapsFile[]>([]);
   const [loadingMaps, setLoadingMaps] = useState(false);
   const [importingMap, setImportingMap] = useState(false);
+  
+  // API Usage Protection
+  const [requestCount, setRequestCount] = useState(0);
+  const MAX_REQUESTS_PER_SESSION = 20; // Limit searches per session to control costs
+  const lastRequestTime = useRef<number>(0);
+  const MIN_REQUEST_INTERVAL = 2000; // 2 seconds between requests
 
   const suggestionsEndRef = useRef<HTMLDivElement>(null);
 
@@ -219,43 +224,6 @@ const App: React.FC = () => {
     }
   };
 
-  const loadMapsScript = useCallback(() => {
-    setMapsStatus('loading');
-    const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.API_KEY;
-    
-    if (!apiKey) {
-      setMapsStatus('error');
-      return;
-    }
-
-    const scriptId = 'google-maps-sdk';
-    const existingScript = document.getElementById(scriptId);
-    if (existingScript) existingScript.remove();
-
-    const script = document.createElement('script');
-    script.id = scriptId;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&v=weekly`;
-    script.async = true;
-    script.defer = true;
-    
-    script.onload = () => {
-      setTimeout(() => {
-        if (window.google && window.google.maps) {
-          setMapsStatus('loaded');
-        } else {
-          setMapsStatus('error');
-        }
-      }, 500);
-    };
-    
-    script.onerror = () => setMapsStatus('error');
-    document.head.appendChild(script);
-  }, []);
-
-  useEffect(() => {
-    loadMapsScript();
-  }, [loadMapsScript]);
-
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -268,6 +236,22 @@ const App: React.FC = () => {
   const handleSearch = async (e: React.FormEvent | null, isLoadMore = false) => {
     e && e.preventDefault();
     if (!currentCity || !query) return;
+
+    // Rate limiting check
+    const now = Date.now();
+    if (now - lastRequestTime.current < MIN_REQUEST_INTERVAL) {
+      console.warn('Rate limit: Please wait before making another request');
+      return;
+    }
+
+    // Request quota check
+    if (requestCount >= MAX_REQUESTS_PER_SESSION) {
+      alert(`Session limit reached (${MAX_REQUESTS_PER_SESSION} searches). Please refresh the page to continue. This limit helps control API costs.`);
+      return;
+    }
+
+    lastRequestTime.current = now;
+    setRequestCount(prev => prev + 1);
 
     if (isLoadMore) setLoadingMore(true); else setLoading(true);
 
@@ -452,12 +436,22 @@ const App: React.FC = () => {
 
               <button 
                 onClick={() => handleSearch(null)}
-                disabled={loading || !currentCity || !query}
+                disabled={loading || !currentCity || !query || requestCount >= MAX_REQUESTS_PER_SESSION}
                 className="w-full bg-slate-900 hover:bg-black disabled:bg-slate-100 disabled:text-slate-400 text-white font-black py-5 rounded-2xl flex items-center justify-center gap-3 transition-all shadow-xl active:scale-[0.99]"
               >
                 {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Compass className="w-6 h-6" />}
                 <span className="text-lg uppercase tracking-widest">{loading ? t.searching : t.findPlaces}</span>
               </button>
+
+              {/* Request Counter */}
+              {requestCount > 0 && (
+                <div className="text-center">
+                  <p className="text-xs text-slate-500">
+                    <span className="font-bold text-indigo-600">{requestCount}</span> / {MAX_REQUESTS_PER_SESSION} searches used
+                    {requestCount >= MAX_REQUESTS_PER_SESSION && <span className="text-red-600 font-bold"> - Limit reached</span>}
+                  </p>
+                </div>
+              )}
             </section>
 
             {/* Results Grid */}
@@ -474,7 +468,7 @@ const App: React.FC = () => {
                     {pendingSuggestions.map((place, idx) => (
                       <div key={idx} className="bg-white rounded-[2.5rem] border border-slate-100 overflow-hidden shadow-sm hover:shadow-2xl hover:-translate-y-1 transition-all duration-500 group">
                         <div className="relative h-64 bg-slate-100">
-                           <GooglePlaceImage place={place} mapsStatus={mapsStatus} index={idx} />
+                           <GooglePlaceImage place={place} index={idx} />
                            <div className="absolute top-5 left-5 right-5 flex justify-between items-start">
                               <span className="px-3 py-1.5 bg-white/90 backdrop-blur-md rounded-xl text-[10px] font-black uppercase text-indigo-600 shadow-sm">
                                 {place.category}
@@ -574,50 +568,76 @@ const App: React.FC = () => {
                 <p className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">{t.noPlaces}</p>
               </div>
             ) : (
-              savedLayers.map((layer, idx) => (
-                <div key={idx} className="space-y-5 animate-in fade-in slide-in-from-right-8 duration-500">
-                  <div className="flex items-center gap-3 group">
-                    <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">{layer.name}</span>
-                    <div className="flex-1 h-px bg-slate-100" />
-                    <ChevronRight className="w-4 h-4 text-slate-300" />
-                  </div>
-                  <div className="space-y-3">
-                    {layer.places.map((place, pIdx) => (
-                      <div key={pIdx} className="bg-slate-50/50 p-5 rounded-3xl border border-slate-100 shadow-sm hover:bg-white hover:shadow-lg transition-all group flex items-start gap-4">
-                        <div className="w-12 h-12 rounded-2xl overflow-hidden shrink-0">
-                           <GooglePlaceImage place={place} mapsStatus={mapsStatus} index={pIdx} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h5 className="font-bold text-slate-900 text-sm truncate">{place.title}</h5>
-                          <div className="flex items-center gap-2 mt-1">
-                             <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">{place.category}</span>
-                             {place.rating && (
-                               <span className="flex items-center gap-0.5 text-[9px] font-black text-amber-500">
-                                 <Star className="w-2.5 h-2.5 fill-amber-500" />
-                                 {place.rating}
-                               </span>
-                             )}
+              savedLayers.map((layer, idx) => {
+                // Group places by category for better organization
+                const placesByCategory = layer.places.reduce((acc, place) => {
+                  const category = place.category || 'Other';
+                  if (!acc[category]) acc[category] = [];
+                  acc[category].push(place);
+                  return acc;
+                }, {} as Record<string, TripRecommendation[]>);
+
+                // Sort categories alphabetically
+                const sortedCategories = Object.keys(placesByCategory).sort();
+
+                return (
+                  <div key={idx} className="space-y-5 animate-in fade-in slide-in-from-right-8 duration-500">
+                    <div className="flex items-center gap-3 group">
+                      <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">{layer.name}</span>
+                      <div className="flex-1 h-px bg-slate-100" />
+                      <ChevronRight className="w-4 h-4 text-slate-300" />
+                    </div>
+                    <div className="space-y-6">
+                      {sortedCategories.map((category) => (
+                        <div key={category} className="space-y-2">
+                          {/* Category Header */}
+                          <div className="flex items-center gap-2 px-2">
+                            <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{category}</span>
+                            <div className="flex-1 h-px bg-slate-200" />
+                            <span className="text-[8px] font-bold text-slate-400">{placesByCategory[category].length}</span>
+                          </div>
+                          {/* Places in this category */}
+                          <div className="space-y-3">
+                            {placesByCategory[category].map((place, pIdx) => (
+                              <div key={pIdx} className="bg-slate-50/50 p-5 rounded-3xl border border-slate-100 shadow-sm hover:bg-white hover:shadow-lg transition-all group flex items-start gap-4">
+                                <div className="w-12 h-12 rounded-2xl overflow-hidden shrink-0">
+                                  <GooglePlaceImage place={place} index={pIdx} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <h5 className="font-bold text-slate-900 text-sm truncate">{place.title}</h5>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">{place.category}</span>
+                                    {place.rating && (
+                                      <span className="flex items-center gap-0.5 text-[9px] font-black text-amber-500">
+                                        <Star className="w-2.5 h-2.5 fill-amber-500" />
+                                        {place.rating}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <button 
+                                  onClick={() => {
+                                    const newLayers = savedLayers.map(l => {
+                                      if (l.name === layer.name) {
+                                        return { ...l, places: l.places.filter(p => p.title !== place.title) };
+                                      }
+                                      return l;
+                                    }).filter(l => l.places.length > 0);
+                                    setSavedLayers(newLayers);
+                                  }}
+                                  className="p-1.5 text-slate-300 hover:text-red-500 transition-colors"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ))}
                           </div>
                         </div>
-                        <button 
-                          onClick={() => {
-                             const newLayers = savedLayers.map(l => {
-                                if (l.name === layer.name) {
-                                   return { ...l, places: l.places.filter(p => p.title !== place.title) };
-                                }
-                                return l;
-                             }).filter(l => l.places.length > 0);
-                             setSavedLayers(newLayers);
-                          }}
-                          className="p-1.5 text-slate-300 hover:text-red-500 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
 
