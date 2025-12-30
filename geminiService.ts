@@ -16,7 +16,7 @@ export const fetchSuggestions = async (
     ? `\nDO NOT suggest: [${excludeTitles.join(', ')}].` 
     : '';
   
-  const prompt = `You are a travel expert. Suggest 8-10 specific places in ${city} for: "${query}".
+  const prompt = `You are a travel expert. Suggest 25-30 specific places in ${city} for: "${query}".
   ${excludeText}
   Respond in ${languageName}.
   
@@ -24,6 +24,7 @@ export const fetchSuggestions = async (
   1. USE GOOGLE MAPS GROUNDING: Find exact coordinates and ratings.
   2. PROVIDE GEOLOCATION: You MUST include (latitude, longitude) for every place.
   3. BE SPECIFIC: Use full official names for landmarks.
+  4. PRIORITIZE: List the best and most relevant places first.
   
   RESPONSE FORMAT (Strictly one line per place):
   * [Category] | Place Name | [Rating/5.0] | (latitude, longitude) - Short Description
@@ -40,7 +41,11 @@ export const fetchSuggestions = async (
         retrievalConfig: {
           latLng: latLng
         }
-      }
+      },
+      temperature: 0.7,
+      topK: 40,
+      topP: 0.95,
+      maxOutputTokens: 8192
     },
   });
 
@@ -96,10 +101,6 @@ export const fetchSuggestions = async (
       }
 
       if (placeName && placeName !== "Unknown Place" && lat !== undefined && lng !== undefined) {
-        // Use Places Photo API - will be fetched client-side with place_id
-        // Don't pre-generate photo URL, let client fetch via Places API
-        const photoUrl = undefined;
-
         suggestions.push({
           title: placeName,
           description: description,
@@ -108,7 +109,6 @@ export const fetchSuggestions = async (
           lat,
           lng,
           rating,
-          photoUrl: photoUrl,
           placeId: placeId
         });
       }

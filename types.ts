@@ -24,7 +24,6 @@ export interface TripRecommendation {
   lat?: number;
   lng?: number;
   rating?: number;
-  photoUrl?: string;
   placeId?: string;
 }
 
