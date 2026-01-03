@@ -63,7 +63,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { city, query, language, excludeTitles = [], latLng } = req.body;
+    const { city, query, excludeTitles = [], latLng } = req.body;
 
     // Validation
     if (!city || !query) {
@@ -84,14 +84,13 @@ export default async function handler(req, res) {
     // Initialize Gemini AI
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     
-    const languageName = language === 'he' ? 'Hebrew' : 'English';
     const excludeText = excludeTitles.length > 0 
       ? `\nDO NOT suggest: [${excludeTitles.join(', ')}].` 
       : '';
     
     const prompt = `You are a travel expert. Suggest 25-30 specific places in ${city} for: "${query}".
   ${excludeText}
-  Respond in ${languageName}.
+  Respond in English.
   
   RULES:
   1. USE GOOGLE MAPS GROUNDING: Find exact coordinates and ratings.

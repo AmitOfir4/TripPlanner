@@ -23,7 +23,6 @@ View your app in AI Studio: https://ai.studio/apps/drive/1VCxC3qLKsdjquVbq51649g
 
 - 🤖 AI-powered location discovery using Google Gemini
 - 🗺️ Google Maps integration with real photos
-- 🌍 Multi-language support (English & Hebrew)
 - 📱 Beautiful, responsive UI
 - 📊 Organize places by city layers
 - 💾 Export to KML for Google My Maps

@@ -1,6 +1,4 @@
 
-export type Language = 'en' | 'he';
-
 export interface GoogleUser {
   email: string;
   name: string;
@@ -37,5 +35,4 @@ export interface TripData {
   summary: string;
   layers: TripLayer[];
   sources: GroundingChunk[];
-  language: Language;
 }

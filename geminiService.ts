@@ -1,5 +1,5 @@
 
-import { TripRecommendation, Language, GroundingChunk } from "./types";
+import { TripRecommendation, GroundingChunk } from "./types";
 
 // Backend API endpoint - change this based on your deployment
 const API_ENDPOINT = import.meta.env.VITE_API_ENDPOINT || 
@@ -8,7 +8,6 @@ const API_ENDPOINT = import.meta.env.VITE_API_ENDPOINT ||
 export const fetchSuggestions = async (
   city: string,
   query: string,
-  language: Language,
   excludeTitles: string[] = [],
   latLng?: { latitude: number, longitude: number }
 ): Promise<{ suggestions: TripRecommendation[], sources: GroundingChunk[] }> => {
@@ -21,7 +20,6 @@ export const fetchSuggestions = async (
       body: JSON.stringify({
         city,
         query,
-        language,
         excludeTitles,
         latLng
       })
