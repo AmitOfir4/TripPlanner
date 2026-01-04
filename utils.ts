@@ -30,6 +30,7 @@ const getKmlStyles = (): string => {
     { id: 'icon-bars', url: 'http://maps.google.com/mapfiles/kml/shapes/bars.png' },
     { id: 'icon-camera', url: 'http://maps.google.com/mapfiles/kml/shapes/camera.png' },
     { id: 'icon-beach', url: 'http://maps.google.com/mapfiles/kml/shapes/swimming.png' },
+    { id: 'icon-hotel', url: 'http://maps.google.com/mapfiles/kml/shapes/lodging.png' },
     { id: 'icon-default', url: 'http://maps.google.com/mapfiles/kml/pushpin/blue-pushpin.png' },
   ];
 
@@ -60,8 +61,8 @@ export const generateKml = (data: TripData): string => {
 
   const folders = data.layers.map(layer => {
     const placemarks = layer.places.map(place => {
-      // Determine style for EACH individual place
-      const styleId = getStyleId(place.category, place.title, place.description);
+      // Use custom icon if set, otherwise determine from category
+      const styleId = place.customKmlIcon || getStyleId(place.category, place.title, place.description);
       
       const geometry = (place.lng !== undefined && place.lat !== undefined) 
         ? `<Point><coordinates>${place.lng},${place.lat},0</coordinates></Point>`

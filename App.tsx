@@ -10,6 +10,7 @@ import { useMapImport } from './hooks/useMapImport';
 import { useUserLocation } from './hooks/useUserLocation';
 import { TripService } from './services/tripService';
 import { MyMapsFile } from './googleDriveService';
+import { TripRecommendation } from './types';
 
 const App: React.FC = () => {
   const userLocation = useUserLocation();
@@ -121,6 +122,12 @@ const App: React.FC = () => {
     setPendingSuggestions(prev => prev.filter(p => p.title !== place.title));
   };
 
+  const handleIconChange = (place: TripRecommendation, iconId: string) => {
+    setPendingSuggestions(prev =>
+      prev.map(p => p.title === place.title ? { ...p, customKmlIcon: iconId } : p)
+    );
+  };
+
   const handleRemovePlace = (layerName: string, placeTitle: string) => {
     setSavedLayers(prev =>
       prev
@@ -169,6 +176,7 @@ const App: React.FC = () => {
                 onSavePlace={savePlace}
                 onDismissPlace={handleDismissPlace}
                 onLoadMore={handleLoadMore}
+                onIconChange={handleIconChange}
               />
             </div>
           </div>

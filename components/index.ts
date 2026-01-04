@@ -5,3 +5,4 @@ export { PlaceImage } from './PlaceImage';
 export { PlaceResults } from './PlaceResults';
 export { SavedPlacesSidebar } from './SavedPlacesSidebar';
 export { ImportModal } from './ImportModal';
+export { KmlIconSelector } from './KmlIconSelector';

@@ -5,7 +5,8 @@ const IMAGE_MAPPING: Record<string, string[]> = {
   MUSEUM: ['museum', 'art', 'gallery'],
   SHOPPING: ['shop', 'market', 'mall'],
   BEACH: ['beach', 'sea'],
-  HOTEL: ['hotel', 'accommodation']
+  HOTEL: ['hotel', 'accommodation'],
+  BAR: ['nightlife', 'bar', 'club', 'pub', 'cocktail']
 };
 
 export const getCategoryImage = (category: string): string => {

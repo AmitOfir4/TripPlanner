@@ -23,6 +23,7 @@ export interface TripRecommendation {
   lng?: number;
   rating?: number;
   placeId?: string;
+  customKmlIcon?: string;
 }
 
 export interface TripLayer {

@@ -13,6 +13,7 @@ interface PlaceResultsProps {
   onSavePlace: (place: TripRecommendation) => void;
   onDismissPlace: (place: TripRecommendation) => void;
   onLoadMore: () => void;
+  onIconChange?: (place: TripRecommendation, iconId: string) => void;
 }
 
 // Normalize categories - group similar ones
@@ -31,6 +32,7 @@ const normalizeCategory = (category: string): string => {
 // Category priority order
 const CATEGORY_ORDER = [
   'Tourist Attractions',
+  'Bar',
   'Restaurants',
   'Museums & Galleries',
   'Shopping',
@@ -46,7 +48,8 @@ export const PlaceResults: React.FC<PlaceResultsProps> = ({
   suggestionsEndRef,
   onSavePlace,
   onDismissPlace,
-  onLoadMore
+  onLoadMore,
+  onIconChange
 }) => {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['Tourist Attractions']));
 
@@ -196,6 +199,7 @@ export const PlaceResults: React.FC<PlaceResultsProps> = ({
                       index={idx}
                       onSave={onSavePlace}
                       onDismiss={onDismissPlace}
+                      onIconChange={onIconChange}
                     />
                   ))}
                 </div>
