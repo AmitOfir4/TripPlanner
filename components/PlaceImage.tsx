@@ -12,11 +12,11 @@ export const PlaceImage = memo<PlaceImageProps>(({ place }) => {
   const imageUrl = getCategoryImage(place.category);
 
   return (
-    <div className="w-full h-full relative overflow-hidden group">
+    <div className="w-full h-full relative overflow-hidden group bg-slate-100">
       <img 
         src={imageUrl} 
         alt={place.title} 
-        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000 ease-out brightness-[0.95]"
+        className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-1000 ease-out brightness-[0.95]"
         onLoad={(e) => (e.currentTarget.style.opacity = '1')}
         style={{ opacity: 0, transition: 'opacity 0.7s ease-out' }}
       />

@@ -35,7 +35,7 @@ export const CATEGORY_RULES: Record<string, string[]> = {
   'Museums & Galleries': ['museum', 'gallery', 'art'],
   'Shopping': ['shop', 'market', 'mall'],
   'Beach': ['beach', 'sea', 'ocean'],
-  'Hotels': ['hotel', 'accommodation', 'resort']
+  'Hotels': ['hotel', 'accommodation']
 };
 
 export const CATEGORY_IMAGES = {
