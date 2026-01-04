@@ -23,7 +23,7 @@ export const KmlIconSelector: React.FC<KmlIconSelectorProps> = ({
       >
         <div className="flex items-center gap-2">
           <img src={currentIcon.url} alt={currentIcon.name} className="w-4 h-4" />
-          <span>KML Icon: {currentIcon.name}</span>
+          <span>Icon: {currentIcon.name}</span>
         </div>
         {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
       </button>

@@ -1,7 +1,14 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { TripRecommendation, TripLayer } from '../types';
 import { fetchSuggestions } from '../geminiService';
 import { API_LIMITS } from '../Constants';
+
+const STORAGE_KEYS = {
+  CITY: 'tripplanner_current_city',
+  QUERY: 'tripplanner_query',
+  PENDING: 'tripplanner_pending_suggestions',
+  SAVED: 'tripplanner_saved_layers'
+};
 
 interface UseTripPlannerReturn {
   currentCity: string;
@@ -23,15 +30,73 @@ interface UseTripPlannerReturn {
 export const useTripPlanner = (
   userLocation?: { latitude: number; longitude: number }
 ): UseTripPlannerReturn => {
-  const [currentCity, setCurrentCity] = useState('');
-  const [query, setQuery] = useState('');
+  const [currentCity, setCurrentCityState] = useState(() => {
+    return localStorage.getItem(STORAGE_KEYS.CITY) || '';
+  });
+  
+  const [query, setQueryState] = useState(() => {
+    return localStorage.getItem(STORAGE_KEYS.QUERY) || '';
+  });
+  
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [pendingSuggestions, setPendingSuggestions] = useState<TripRecommendation[]>([]);
-  const [savedLayers, setSavedLayers] = useState<TripLayer[]>([]);
+  
+  const [pendingSuggestions, setPendingSuggestionsState] = useState<TripRecommendation[]>(() => {
+    const stored = localStorage.getItem(STORAGE_KEYS.PENDING);
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (error) {
+        console.error('Error parsing pending suggestions:', error);
+        return [];
+      }
+    }
+    return [];
+  });
+  
+  const [savedLayers, setSavedLayersState] = useState<TripLayer[]>(() => {
+    const stored = localStorage.getItem(STORAGE_KEYS.SAVED);
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (error) {
+        console.error('Error parsing saved layers:', error);
+        return [];
+      }
+    }
+    return [];
+  });
+  
   const [requestCount, setRequestCount] = useState(0);
 
   const lastRequestTime = useRef<number>(0);
+
+  // Wrapper functions to update both state and localStorage
+  const setCurrentCity = (city: string) => {
+    setCurrentCityState(city);
+    localStorage.setItem(STORAGE_KEYS.CITY, city);
+  };
+
+  const setQuery = (q: string) => {
+    setQueryState(q);
+    localStorage.setItem(STORAGE_KEYS.QUERY, q);
+  };
+
+  const setPendingSuggestions: React.Dispatch<React.SetStateAction<TripRecommendation[]>> = (value) => {
+    setPendingSuggestionsState(prev => {
+      const newValue = typeof value === 'function' ? value(prev) : value;
+      localStorage.setItem(STORAGE_KEYS.PENDING, JSON.stringify(newValue));
+      return newValue;
+    });
+  };
+
+  const setSavedLayers: React.Dispatch<React.SetStateAction<TripLayer[]>> = (value) => {
+    setSavedLayersState(prev => {
+      const newValue = typeof value === 'function' ? value(prev) : value;
+      localStorage.setItem(STORAGE_KEYS.SAVED, JSON.stringify(newValue));
+      return newValue;
+    });
+  };
 
   const handleSearch = async (e: React.FormEvent | null, isLoadMore = false) => {
     e?.preventDefault();
@@ -110,6 +175,10 @@ export const useTripPlanner = (
     setCurrentCity('');
     setPendingSuggestions([]);
     setQuery('');
+    localStorage.removeItem(STORAGE_KEYS.CITY);
+    localStorage.removeItem(STORAGE_KEYS.QUERY);
+    localStorage.removeItem(STORAGE_KEYS.PENDING);
+    localStorage.removeItem(STORAGE_KEYS.SAVED);
   };
 
   return {
