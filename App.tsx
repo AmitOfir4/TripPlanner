@@ -154,7 +154,6 @@ const App: React.FC = () => {
               currentCity={currentCity}
               query={query}
               loading={loading}
-              requestCount={requestCount}
               onCityChange={setCurrentCity}
               onQueryChange={setQuery}
               onSearch={handleSearch}

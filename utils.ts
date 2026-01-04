@@ -1,20 +1,20 @@
 
 import { TripData, TripRecommendation } from "./types";
+import { CATEGORY_RULES, KML_ICON_STYLES } from "./Constants";
 
 /**
- * Maps categories or keywords to specific KML icon styles.
+ * Maps categories to specific KML icon styles using shared constants.
  */
 const getStyleId = (category: string, title: string, description: string): string => {
   const text = `${category} ${title} ${description}`.toLowerCase();
   
-  // High-priority Category mapping
-  if (text.includes('dining') || text.includes('food') || text.includes('restaurant')) return 'icon-dining';
-  if (text.includes('landmark') || text.includes('sight') || text.includes('attraction') || text.includes('history')) return 'icon-camera';
-  if (text.includes('nature') || text.includes('park') || text.includes('garden')) return 'icon-parks';
-  if (text.includes('art') || text.includes('museum') || text.includes('gallery')) return 'icon-arts';
-  if (text.includes('shop') || text.includes('market')) return 'icon-shopping';
-  if (text.includes('nightlife') || text.includes('bar') || text.includes('club')) return 'icon-bars';
-
+  // Find matching category using the same rules as the app
+  for (const [categoryName, keywords] of Object.entries(CATEGORY_RULES)) {
+    if (keywords.some(keyword => text.includes(keyword))) {
+      return KML_ICON_STYLES[categoryName] || 'icon-camera';
+    }
+  }
+  
   return 'icon-camera';
 };
 
@@ -29,6 +29,7 @@ const getKmlStyles = (): string => {
     { id: 'icon-shopping', url: 'http://maps.google.com/mapfiles/kml/shapes/shopping.png' },
     { id: 'icon-bars', url: 'http://maps.google.com/mapfiles/kml/shapes/bars.png' },
     { id: 'icon-camera', url: 'http://maps.google.com/mapfiles/kml/shapes/camera.png' },
+    { id: 'icon-beach', url: 'http://maps.google.com/mapfiles/kml/shapes/swimming.png' },
     { id: 'icon-default', url: 'http://maps.google.com/mapfiles/kml/pushpin/blue-pushpin.png' },
   ];
 

@@ -1,25 +1,22 @@
 import { CATEGORY_IMAGES } from '../Constants';
 
+const IMAGE_MAPPING: Record<string, string[]> = {
+  FOOD: ['food', 'restaurant', 'cafe', 'dining'],
+  MUSEUM: ['museum', 'art', 'gallery'],
+  SHOPPING: ['shop', 'market', 'mall'],
+  BEACH: ['beach', 'sea'],
+  HOTEL: ['hotel', 'accommodation']
+};
+
 export const getCategoryImage = (category: string): string => {
   const normalized = (category || '').toLowerCase();
   
-  if (normalized.includes('food') || normalized.includes('restaurant') || 
-      normalized.includes('cafe') || normalized.includes('dining')) {
-    return CATEGORY_IMAGES.FOOD;
-  }
-  
-  if (normalized.includes('museum') || normalized.includes('art') || 
-      normalized.includes('gallery')) {
-    return CATEGORY_IMAGES.MUSEUM;
-  }
-  
-  if (normalized.includes('shop') || normalized.includes('market') || 
-      normalized.includes('mall')) {
-    return CATEGORY_IMAGES.SHOPPING;
-  }
-  
-  if (normalized.includes('beach') || normalized.includes('sea')) {
-    return CATEGORY_IMAGES.BEACH;
+  for (const [imageKey, keywords] of Object.entries(IMAGE_MAPPING)) 
+  {
+    if (keywords.some(keyword => normalized.includes(keyword))) 
+    {
+      return CATEGORY_IMAGES[imageKey as keyof typeof CATEGORY_IMAGES];
+    }
   }
   
   return CATEGORY_IMAGES.DEFAULT;

@@ -1,12 +1,11 @@
 import React from 'react';
 import { MapPin, MessageSquare, Compass, Loader2 } from 'lucide-react';
-import { TRANSLATIONS, API_LIMITS } from '../Constants';
+import { TRANSLATIONS } from '../Constants';
 
 interface SearchFormProps {
   currentCity: string;
   query: string;
   loading: boolean;
-  requestCount: number;
   onCityChange: (city: string) => void;
   onQueryChange: (query: string) => void;
   onSearch: (e: React.FormEvent | null) => void;
@@ -16,13 +15,11 @@ export const SearchForm: React.FC<SearchFormProps> = ({
   currentCity,
   query,
   loading,
-  requestCount,
   onCityChange,
   onQueryChange,
   onSearch
 }) => {
-  const isDisabled = loading || !currentCity || !query || 
-                     requestCount >= API_LIMITS.MAX_REQUESTS_PER_SESSION;
+  const isDisabled = loading || !currentCity || !query;
 
   return (
     <section className="space-y-8">
@@ -82,17 +79,6 @@ export const SearchForm: React.FC<SearchFormProps> = ({
           {loading ? TRANSLATIONS.searching : TRANSLATIONS.findPlaces}
         </span>
       </button>
-
-      {requestCount > 0 && (
-        <div className="text-center">
-          <p className="text-xs text-slate-500">
-            <span className="font-bold text-indigo-600">{requestCount}</span> / {API_LIMITS.MAX_REQUESTS_PER_SESSION} searches used
-            {requestCount >= API_LIMITS.MAX_REQUESTS_PER_SESSION && (
-              <span className="text-red-600 font-bold"> - Limit reached</span>
-            )}
-          </p>
-        </div>
-      )}
     </section>
   );
 };

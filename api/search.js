@@ -1,38 +1,7 @@
 // Vercel Serverless Function
 import { GoogleGenAI } from '@google/genai';
 
-// In-memory rate limiting (use Vercel KV or Upstash Redis in production)
-const requestCounts = new Map();
-const RATE_LIMIT = 20;
-const RATE_WINDOW = 60 * 60 * 1000; // 1 hour
-
-function checkRateLimit(ip) {
-  const now = Date.now();
-  
-  if (!requestCounts.has(ip)) {
-    requestCounts.set(ip, { count: 1, resetTime: now + RATE_WINDOW });
-    return { allowed: true, remaining: RATE_LIMIT - 1 };
-  }
-  
-  const clientData = requestCounts.get(ip);
-  
-  if (now > clientData.resetTime) {
-    clientData.count = 1;
-    clientData.resetTime = now + RATE_WINDOW;
-    return { allowed: true, remaining: RATE_LIMIT - 1 };
-  }
-  
-  if (clientData.count >= RATE_LIMIT) {
-    return { 
-      allowed: false, 
-      remaining: 0,
-      resetTime: clientData.resetTime 
-    };
-  }
-  
-  clientData.count++;
-  return { allowed: true, remaining: RATE_LIMIT - clientData.count };
-}
+// Rate limiting disabled
 
 export default async function handler(req, res) {
   // Enable CORS
@@ -48,18 +17,6 @@ export default async function handler(req, res) {
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  // Rate limiting
-  const clientIP = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
-  const rateLimitCheck = checkRateLimit(clientIP);
-  
-  if (!rateLimitCheck.allowed) {
-    return res.status(429).json({
-      error: 'Rate limit exceeded',
-      message: `Maximum ${RATE_LIMIT} requests per hour. Please try again later.`,
-      resetTime: rateLimitCheck.resetTime
-    });
   }
 
   try {

@@ -45,15 +45,6 @@ export const useTripPlanner = (
       return;
     }
 
-    // Request quota check
-    if (requestCount >= API_LIMITS.MAX_REQUESTS_PER_SESSION) {
-      alert(
-        `Session limit reached (${API_LIMITS.MAX_REQUESTS_PER_SESSION} searches). ` +
-        `Please refresh the page to continue. This limit helps control API costs.`
-      );
-      return;
-    }
-
     lastRequestTime.current = now;
     setRequestCount(prev => prev + 1);
 

@@ -12,41 +12,7 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// Rate limiting storage (in-memory, use Redis in production)
-const requestCounts = new Map();
-const RATE_LIMIT = 20; // requests per IP per hour
-const RATE_WINDOW = 60 * 60 * 1000; // 1 hour in milliseconds
-
-// Rate limiting middleware
-const rateLimiter = (req, res, next) => {
-  const clientIP = req.ip || req.connection.remoteAddress;
-  const now = Date.now();
-  
-  if (!requestCounts.has(clientIP)) {
-    requestCounts.set(clientIP, { count: 1, resetTime: now + RATE_WINDOW });
-    return next();
-  }
-  
-  const clientData = requestCounts.get(clientIP);
-  
-  if (now > clientData.resetTime) {
-    // Reset the counter
-    clientData.count = 1;
-    clientData.resetTime = now + RATE_WINDOW;
-    return next();
-  }
-  
-  if (clientData.count >= RATE_LIMIT) {
-    return res.status(429).json({
-      error: 'Rate limit exceeded',
-      message: `Maximum ${RATE_LIMIT} requests per hour. Please try again later.`,
-      resetTime: clientData.resetTime
-    });
-  }
-  
-  clientData.count++;
-  next();
-};
+// Rate limiting disabled
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -54,7 +20,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Gemini search endpoint
-app.post('/api/search', rateLimiter, async (req, res) => {
+app.post('/api/search', async (req, res) => {
   try {
     const { city, query, excludeTitles = [], latLng } = req.body;
 
@@ -199,7 +165,7 @@ app.post('/api/search', rateLimiter, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Backend API server running on http://localhost:${PORT}`);
   console.log(`📍 Gemini API endpoint: http://localhost:${PORT}/api/search`);
-  console.log(`⏱️  Rate limit: ${RATE_LIMIT} requests per hour per IP`);
+  console.log(`⏱️  Rate limiting: disabled`);
 });
 
 export default app;

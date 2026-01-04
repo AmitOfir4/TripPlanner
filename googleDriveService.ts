@@ -17,11 +17,15 @@ export async function fetchMyMaps(accessToken: string): Promise<MyMapsFile[]> {
   try {
     // Google My Maps are stored with application/vnd.google-apps.map MIME type
     const query = "mimeType='application/vnd.google-apps.map' and trashed=false";
-    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,createdTime,modifiedTime,thumbnailLink,webViewLink)&orderBy=modifiedTime desc`;
+    const timestamp = Date.now();
+    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,createdTime,modifiedTime,thumbnailLink,webViewLink)&orderBy=modifiedTime desc&_=${timestamp}`;
     
     const response = await fetch(url, {
+      cache: 'no-store',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache'
       },
     });
 
@@ -47,8 +51,9 @@ export async function fetchMyMaps(accessToken: string): Promise<MyMapsFile[]> {
  */
 export async function downloadMyMapAsKML(fileId: string, accessToken: string): Promise<string> {
   try {
-    // Google My Maps can be downloaded as KML if they are publicly shared
-    const directKmlUrl = `https://www.google.com/maps/d/u/0/kml?forcekml=1&mid=${fileId}`;
+    // Add timestamp to bust cache
+    const timestamp = Date.now();
+    const directKmlUrl = `https://www.google.com/maps/d/u/0/kml?forcekml=1&mid=${fileId}&_=${timestamp}`;
     
     console.log('Attempting to download My Map KML via CORS proxy...');
     
@@ -64,7 +69,14 @@ export async function downloadMyMapAsKML(fileId: string, accessToken: string): P
     for (let i = 0; i < proxies.length; i++) {
       try {
         console.log(`Trying proxy ${i + 1}/${proxies.length}...`);
-        const response = await fetch(proxies[i]);
+        const response = await fetch(proxies[i], {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          }
+        });
 
         if (!response.ok) {
           throw new Error(`Proxy ${i + 1} failed: ${response.statusText}`);

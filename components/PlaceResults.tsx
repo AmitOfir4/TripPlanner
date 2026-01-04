@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Sparkles, Loader2, RefreshCw, MapPin, ChevronDown, ChevronUp, Plus } from 'lucide-react';
 import { TripRecommendation } from '../types';
 import { PlaceCard } from './PlaceCard';
-import { TRANSLATIONS } from '../Constants';
+import { TRANSLATIONS, CATEGORY_RULES } from '../Constants';
 
 interface PlaceResultsProps {
   loading: boolean;
@@ -19,58 +19,12 @@ interface PlaceResultsProps {
 const normalizeCategory = (category: string): string => {
   const normalized = category.toLowerCase();
   
-  // Tourist Attractions - landmarks, parks, historical, nature, sights, nightlife
-  if (normalized.includes('landmark') || 
-      normalized.includes('attraction') ||
-      normalized.includes('park') ||
-      normalized.includes('historical') ||
-      normalized.includes('nature') ||
-      normalized.includes('monument') ||
-      normalized.includes('sight') ||
-      normalized.includes('nightlife') ||
-      normalized.includes('bar') ||
-      normalized.includes('club')) {
-    return 'Tourist Attractions';
+  for (const [categoryName, keywords] of Object.entries(CATEGORY_RULES)) {
+    if (keywords.some(keyword => normalized.includes(keyword))) {
+      return categoryName;
+    }
   }
   
-  // Restaurants - food, dining, cafes
-  if (normalized.includes('food') ||
-      normalized.includes('restaurant') ||
-      normalized.includes('dining') ||
-      normalized.includes('cafe')) {
-    return 'Restaurants';
-  }
-  
-  // Museums & Galleries
-  if (normalized.includes('museum') || 
-      normalized.includes('gallery') || 
-      normalized.includes('art')) {
-    return 'Museums & Galleries';
-  }
-  
-  // Shopping
-  if (normalized.includes('shop') || 
-      normalized.includes('market') ||
-      normalized.includes('mall')) {
-    return 'Shopping';
-  }
-  
-  // Beach
-  if (normalized.includes('beach') || 
-      normalized.includes('sea') ||
-      normalized.includes('ocean')) {
-    return 'Beach';
-  }
-  
-  // Hotels
-  if (normalized.includes('hotel') || 
-      normalized.includes('accommodation') ||
-      normalized.includes('lodging') ||
-      normalized.includes('resort')) {
-    return 'Hotels';
-  }
-  
-  // Default to Tourist Attractions for anything else
   return 'Tourist Attractions';
 };
 
@@ -136,9 +90,21 @@ export const PlaceResults: React.FC<PlaceResultsProps> = ({
     const indexA = CATEGORY_ORDER.indexOf(a);
     const indexB = CATEGORY_ORDER.indexOf(b);
     
-    if (indexA === -1 && indexB === -1) return a.localeCompare(b);
-    if (indexA === -1) return 1;
-    if (indexB === -1) return -1;
+    if (indexA === -1 && indexB === -1)
+    {
+      return a.localeCompare(b);
+    }
+
+    if (indexA === -1)
+    { 
+      return 1;
+    }
+
+    if (indexB === -1)
+    {
+       return -1;
+    }
+
     return indexA - indexB;
   });
 
