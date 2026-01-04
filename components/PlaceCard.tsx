@@ -2,7 +2,7 @@ import React from 'react';
 import { MapPin, Plus, X, Star } from 'lucide-react';
 import { TripRecommendation } from '../types';
 import { PlaceImage } from './PlaceImage';
-import { TRANSLATIONS } from '../constants';
+import { TRANSLATIONS } from '../Constants';
 
 interface PlaceCardProps {
   place: TripRecommendation;
@@ -51,7 +51,7 @@ export const PlaceCard: React.FC<PlaceCardProps> = ({
               className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-indigo-600 transition-colors"
             >
               <MapPin className="w-4 h-4" />
-              View Map
+              Google Maps
             </a>
           ) : (
             <div />

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:backend": "node server/index.js",
+    "dev:backend": "nodemon server/index.js",
     "dev:all": "concurrently \"npm run dev\" \"npm run dev:backend\"",
     "build": "tsc && vite build",
     "preview": "vite preview"
@@ -28,6 +28,7 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^8.2.2",
+    "nodemon": "^3.1.11",
     "typescript": "^5.7.2",
     "vite": "^6.0.3"
   }

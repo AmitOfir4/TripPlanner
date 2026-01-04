@@ -13,7 +13,7 @@ export const TRANSLATIONS = {
   noCity: "Where should we go first?",
   noPlaces: "Your itinerary is empty",
   saved: "Added!",
-  downloadKml: "Export to My Maps",
+  downloadKml: "Download Map",
   howToImport: "How to use",
   sources: "Map Evidence",
   reset: "Clear",

@@ -1,4 +1,4 @@
-import { CATEGORY_IMAGES } from '../constants';
+import { CATEGORY_IMAGES } from '../Constants';
 
 export const getCategoryImage = (category: string): string => {
   const normalized = (category || '').toLowerCase();

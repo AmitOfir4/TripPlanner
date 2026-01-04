@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { TripRecommendation, TripLayer } from '../types';
 import { fetchSuggestions } from '../geminiService';
-import { API_LIMITS } from '../constants';
+import { API_LIMITS } from '../Constants';
 
 interface UseTripPlannerReturn {
   currentCity: string;

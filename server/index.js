@@ -81,7 +81,7 @@ app.post('/api/search', rateLimiter, async (req, res) => {
       ? `\nDO NOT suggest: [${excludeTitles.join(', ')}].` 
       : '';
     
-    const prompt = `You are a travel expert. Suggest 25-30 specific places in ${city} for: "${query}".
+    const prompt = `You are a travel expert. Suggest 10-15 specific places in ${city} for: "${query}".
   ${excludeText}
   Respond in English.
   

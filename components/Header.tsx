@@ -1,7 +1,7 @@
 import React from 'react';
 import { Map as MapIcon, Trash2, Upload, LogIn } from 'lucide-react';
 import { GoogleUser } from '../googleAuthService';
-import { TRANSLATIONS } from '../constants';
+import { TRANSLATIONS } from '../Constants';
 
 interface HeaderProps {
   googleUser: GoogleUser | null;

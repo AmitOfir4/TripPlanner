@@ -7,7 +7,7 @@ A complete integration that allows users to import their Google My Maps into you
 ## New Files Created
 
 ### 1. `googleAuthService.ts`
-- Google OAuth configuration constants
+- Google OAuth configuration Constants
 - TypeScript types for Google user data
 - Scopes definition for Drive API access
 

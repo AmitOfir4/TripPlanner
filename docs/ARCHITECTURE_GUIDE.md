@@ -25,7 +25,7 @@ This project follows a clean, modular architecture with clear separation of conc
 │   └── index.ts
 ├── helpers/            # Utility functions
 │   └── imageHelper.ts
-├── constants.ts        # App constants and translations
+├── Constants.ts        # App Constants and translations
 ├── types.ts           # TypeScript type definitions
 ├── utils.ts           # General utilities
 ├── geminiService.ts   # Gemini AI integration

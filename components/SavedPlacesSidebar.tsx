@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { TripLayer, TripRecommendation } from '../types';
 import { PlaceImage } from './PlaceImage';
-import { TRANSLATIONS } from '../constants';
+import { TRANSLATIONS } from '../Constants';
 import { GoogleUser } from '../googleAuthService';
 
 interface SavedPlacesSidebarProps {
@@ -43,6 +43,13 @@ export const SavedPlacesSidebar: React.FC<SavedPlacesSidebarProps> = ({
         )}
       </div>
 
+      <ActionButtons 
+        hasPlaces={savedLayers.length > 0}
+        googleUser={googleUser}
+        onDownload={onDownload}
+        onUploadToDrive={onUploadToDrive}
+      />
+
       <div className="flex-1 space-y-12">
         {savedLayers.length === 0 ? (
           <EmptyState />
@@ -56,13 +63,6 @@ export const SavedPlacesSidebar: React.FC<SavedPlacesSidebarProps> = ({
           ))
         )}
       </div>
-
-      <ActionButtons 
-        hasPlaces={savedLayers.length > 0}
-        googleUser={googleUser}
-        onDownload={onDownload}
-        onUploadToDrive={onUploadToDrive}
-      />
     </aside>
   );
 };
@@ -200,7 +200,7 @@ const ActionButtons: React.FC<ActionButtonsProps> = ({
   onDownload,
   onUploadToDrive
 }) => (
-  <div className="mt-12 space-y-4 shrink-0">
+  <div className="mb-12 space-y-4 shrink-0">
     <div className="bg-slate-900 text-slate-400 p-6 rounded-[2rem] shadow-xl flex gap-4">
       <Info className="w-6 h-6 text-indigo-400 shrink-0" />
       <p className="text-[10px] font-bold leading-relaxed tracking-wide text-slate-300">
@@ -224,7 +224,7 @@ const ActionButtons: React.FC<ActionButtonsProps> = ({
         className="w-full bg-green-600 hover:bg-green-700 disabled:bg-slate-100 disabled:text-slate-400 text-white font-black py-5 rounded-[2rem] flex items-center justify-center gap-3 transition-all shadow-xl shadow-green-200 active:scale-[0.98]"
       >
         <Upload className="w-5 h-5" />
-        <span className="text-sm uppercase tracking-widest">Upload to Drive</span>
+        <span className="text-sm uppercase tracking-widest">Upload to Google Maps</span>
       </button>
     )}
   </div>
