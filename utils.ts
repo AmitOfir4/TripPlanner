@@ -6,11 +6,20 @@ import { CATEGORY_RULES, KML_ICON_STYLES } from "./Constants";
  * Maps categories to specific KML icon styles using shared constants.
  */
 const getStyleId = (category: string, title: string, description: string): string => {
+  // First, try to get icon directly from the category name
+  if (category && KML_ICON_STYLES[category]) {
+    return KML_ICON_STYLES[category];
+  }
+  
+  // Fallback: search in text for keyword matching
   const text = `${category} ${title} ${description}`.toLowerCase();
   
-  // Find matching category using the same rules as the app
-  for (const [categoryName, keywords] of Object.entries(CATEGORY_RULES)) {
-    if (keywords.some(keyword => text.includes(keyword))) {
+  // Check specific categories first - Hotels before Bar to avoid hotels with bars being categorized as bars
+  const priorityOrder = ['Tourist Attractions', 'Hotels', 'Restaurants', 'Bar', 'Museums & Galleries', 'Shopping', 'Beach'];
+  
+  for (const categoryName of priorityOrder) {
+    const keywords = CATEGORY_RULES[categoryName];
+    if (keywords && keywords.some(keyword => text.includes(keyword))) {
       return KML_ICON_STYLES[categoryName] || 'icon-camera';
     }
   }
