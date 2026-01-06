@@ -53,8 +53,16 @@ export const PlaceResults: React.FC<PlaceResultsProps> = ({
 }) => {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['Tourist Attractions']));
 
-  if (loading) {
-    return null;
+  // Show loading state only initially, not when streaming
+  if (loading && suggestions.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center space-y-4">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-600" />
+          <p className="text-slate-600 font-medium">Searching for amazing places...</p>
+        </div>
+      </div>
+    );
   }
 
   if (suggestions.length === 0) {
@@ -134,9 +142,17 @@ export const PlaceResults: React.FC<PlaceResultsProps> = ({
           <Sparkles className="w-4 h-4 text-indigo-500" />
           {TRANSLATIONS.topRated}
         </h3>
-        <span className="text-xs text-slate-500 font-medium">
-          {suggestions.length} places in {sortedCategories.length} categories
-        </span>
+        <div className="flex items-center gap-3">
+          {loadingMore && (
+            <span className="flex items-center gap-2 text-xs text-indigo-600 font-semibold animate-pulse">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Loading more...
+            </span>
+          )}
+          <span className="text-xs text-slate-500 font-medium">
+            {suggestions.length} places in {sortedCategories.length} categories
+          </span>
+        </div>
       </div>
       
       <div className="space-y-6">

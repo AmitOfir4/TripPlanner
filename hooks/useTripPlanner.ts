@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
+import { flushSync } from 'react-dom';
 import { TripRecommendation, TripLayer } from '../types';
-import { fetchSuggestions } from '../geminiService';
+import { fetchSuggestions, fetchSuggestionsStream } from '../geminiService';
 import { API_LIMITS } from '../Constants';
 
 const STORAGE_KEYS = {
@@ -83,10 +84,15 @@ export const useTripPlanner = (
   };
 
   const setPendingSuggestions: React.Dispatch<React.SetStateAction<TripRecommendation[]>> = (value) => {
-    setPendingSuggestionsState(prev => {
-      const newValue = typeof value === 'function' ? value(prev) : value;
-      localStorage.setItem(STORAGE_KEYS.PENDING, JSON.stringify(newValue));
-      return newValue;
+    flushSync(() => {
+      setPendingSuggestionsState(prev => {
+        const newValue = typeof value === 'function' ? value(prev) : value;
+        // Update localStorage asynchronously to not block state update
+        setTimeout(() => {
+          localStorage.setItem(STORAGE_KEYS.PENDING, JSON.stringify(newValue));
+        }, 0);
+        return newValue;
+      });
     });
   };
 
@@ -117,6 +123,8 @@ export const useTripPlanner = (
       setLoadingMore(true);
     } else {
       setLoading(true);
+      // Clear previous results when starting a new search
+      setPendingSuggestions([]);
     }
 
     try {
@@ -125,21 +133,47 @@ export const useTripPlanner = (
         ...savedLayers.flatMap(l => l.places.map(p => p.title))
       ];
       
-      const { suggestions } = await fetchSuggestions(
+      // Use streaming for the initial search to get 150-200 results progressively
+      await fetchSuggestionsStream(
         currentCity, 
-        query, 
-        excludeTitles, 
+        query,
+        (batch, batchNumber) => {
+          console.log(`[Stream] Batch ${batchNumber}: Received ${batch.length} places`);
+          
+          // Add each batch as it arrives
+          setPendingSuggestions(prev => {
+            // Avoid duplicates
+            const newPlaces = batch.filter(
+              b => !prev.find(p => p.title === b.title)
+            );
+            const updated = [...prev, ...newPlaces];
+            console.log(`[Stream] Batch ${batchNumber}: Added ${newPlaces.length} new places, total now: ${updated.length}`);
+            return updated;
+          });
+          
+          // Set loading to false after first batch so UI shows results
+          if (batchNumber === 1) {
+            console.log('[Stream] First batch received, setting loading to false');
+            setLoading(false);
+          }
+        },
+        () => {
+          // On complete
+          setLoading(false);
+          setLoadingMore(false);
+          console.log('Search completed');
+        },
+        (error) => {
+          // On error
+          console.error('Streaming error:', error);
+          setLoading(false);
+          setLoadingMore(false);
+        },
+        excludeTitles,
         userLocation
       );
-      
-      if (isLoadMore) {
-        setPendingSuggestions(prev => [...prev, ...suggestions]);
-      } else {
-        setPendingSuggestions(suggestions);
-      }
     } catch (err) {
       console.error('Error fetching suggestions:', err);
-    } finally {
       setLoading(false);
       setLoadingMore(false);
     }
