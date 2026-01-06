@@ -23,13 +23,14 @@ const App: React.FC = () => {
     query,
     setQuery,
     loading,
-    loadingMore,
+    enriching,
     pendingSuggestions,
     setPendingSuggestions,
     savedLayers,
     setSavedLayers,
     requestCount,
     handleSearch,
+    handleEnrichSelected,
     savePlace,
     resetTrip
   } = useTripPlanner(userLocation);
@@ -112,10 +113,7 @@ const App: React.FC = () => {
   };
 
   const handleLoadMore = () => {
-    handleSearch(null, true);
-    setTimeout(() => {
-      suggestionsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 300);
+    // Removed - no longer using load more in quick search
   };
 
   const handleDismissPlace = (place: { title: string }) => {
@@ -169,13 +167,11 @@ const App: React.FC = () => {
             <div className="space-y-8 pb-20">
               <PlaceResults
                 loading={loading}
-                loadingMore={loadingMore}
                 currentCity={currentCity}
                 suggestions={pendingSuggestions}
                 suggestionsEndRef={suggestionsEndRef}
                 onSavePlace={savePlace}
                 onDismissPlace={handleDismissPlace}
-                onLoadMore={handleLoadMore}
                 onIconChange={handleIconChange}
               />
             </div>
@@ -186,9 +182,11 @@ const App: React.FC = () => {
         <SavedPlacesSidebar
           savedLayers={savedLayers}
           googleUser={googleUser}
+          enriching={enriching}
           onRemovePlace={handleRemovePlace}
           onDownload={handleDownload}
           onUploadToDrive={handleUploadToDrive}
+          onEnrichSelected={handleEnrichSelected}
         />
       </main>
 

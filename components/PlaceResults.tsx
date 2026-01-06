@@ -6,13 +6,11 @@ import { TRANSLATIONS, CATEGORY_RULES } from '../Constants';
 
 interface PlaceResultsProps {
   loading: boolean;
-  loadingMore: boolean;
   currentCity: string;
   suggestions: TripRecommendation[];
   suggestionsEndRef: React.RefObject<HTMLDivElement>;
   onSavePlace: (place: TripRecommendation) => void;
   onDismissPlace: (place: TripRecommendation) => void;
-  onLoadMore: () => void;
   onIconChange?: (place: TripRecommendation, iconId: string) => void;
 }
 
@@ -42,24 +40,22 @@ const CATEGORY_ORDER = [
 
 export const PlaceResults: React.FC<PlaceResultsProps> = ({
   loading,
-  loadingMore,
   currentCity,
   suggestions,
   suggestionsEndRef,
   onSavePlace,
   onDismissPlace,
-  onLoadMore,
   onIconChange
 }) => {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['Tourist Attractions']));
 
-  // Show loading state only initially, not when streaming
-  if (loading && suggestions.length === 0) {
+  // Show loading state
+  if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center space-y-4">
           <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-600" />
-          <p className="text-slate-600 font-medium">Searching for amazing places...</p>
+          <p className="text-slate-600 font-medium">Finding places...</p>
         </div>
       </div>
     );
@@ -143,12 +139,6 @@ export const PlaceResults: React.FC<PlaceResultsProps> = ({
           {TRANSLATIONS.topRated}
         </h3>
         <div className="flex items-center gap-3">
-          {loadingMore && (
-            <span className="flex items-center gap-2 text-xs text-indigo-600 font-semibold animate-pulse">
-              <Loader2 className="w-3 h-3 animate-spin" />
-              Loading more...
-            </span>
-          )}
           <span className="text-xs text-slate-500 font-medium">
             {suggestions.length} places in {sortedCategories.length} categories
           </span>
@@ -225,20 +215,7 @@ export const PlaceResults: React.FC<PlaceResultsProps> = ({
         })}
       </div>
 
-      <div className="flex justify-center pt-8" ref={suggestionsEndRef}>
-        <button 
-          onClick={onLoadMore}
-          disabled={loadingMore}
-          className="group flex items-center gap-3 px-10 py-5 rounded-2xl bg-white border border-slate-200 hover:border-indigo-600 text-slate-900 font-black text-xs uppercase tracking-widest transition-all shadow-sm hover:shadow-md disabled:opacity-50"
-        >
-          {loadingMore ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <RefreshCw className="w-4 h-4 group-hover:rotate-180 transition-transform duration-500" />
-          )}
-          {TRANSLATIONS.loadMore}
-        </button>
-      </div>
+      <div ref={suggestionsEndRef} />
     </>
   );
 };

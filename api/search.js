@@ -1,4 +1,4 @@
-// Vercel Serverless Function with Streaming Support
+// Vercel Serverless Function - Quick Search (Phase 1)
 import { GoogleGenAI } from '@google/genai';
 
 export default async function handler(req, res) {
@@ -18,7 +18,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { city, query, excludeTitles = [], latLng } = req.body;
+    const { city, query } = req.body;
 
     // Validation
     if (!city || !query) {
@@ -36,188 +36,80 @@ export default async function handler(req, res) {
       });
     }
 
-    // Set up Server-Sent Events
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
+    console.log(`[Quick Search] ${city} - "${query}"`);
 
     // Initialize Gemini AI
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     
-    const excludeText = excludeTitles.length > 0 
-      ? `\nDO NOT suggest: [${excludeTitles.join(', ')}].` 
-      : '';
+    // Simple, fast prompt - just get place names and categories
+    const prompt = `List 60 places in ${city} for: "${query}"
     
-    const prompt = `You are a travel expert. Find 150-200 specific, diverse places in ${city} for: "${query}".
-  ${excludeText}
-  Respond in English.
-  
-  RULES:
-  1. USE GOOGLE MAPS GROUNDING: Find exact coordinates and ratings.
-  2. PROVIDE GEOLOCATION: You MUST include (latitude, longitude) for every place.
-  3. BE SPECIFIC: Use full official names for landmarks.
-  4. PRIORITIZE: Mix popular spots with hidden local gems.
-  5. DIVERSIFY: Cover different neighborhoods and areas.
-  6. AVOID: Chain restaurants/stores unless highly relevant.
-  
-  RESPONSE FORMAT (Strictly one line per place):
-  * [Category] | Place Name | [Rating/5.0] | (latitude, longitude) - Short Description (max 20 words)
-  
-  Example:
-  * [Landmark] | Eiffel Tower | [4.8/5.0] | (48.8584, 2.2945) - The iconic iron lattice tower and symbol of Paris.`;
+Format each place as:
+Name | Category
 
-    const stream = await ai.models.generateContentStream({
+Categories: Landmark, Restaurant, Shopping, Hotel, Nature, Entertainment, Museum, Beach, Nightlife, Adventure, Culture, Cafe
+
+Example:
+Burj Khalifa | Landmark
+The Dubai Mall | Shopping`;
+
+    // Fast generation without Google Maps grounding
+    const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
       config: {
-        tools: [{ googleMaps: {} }], 
-        toolConfig: {
-          retrievalConfig: {
-            latLng: latLng
-          }
-        },
-        temperature: 0.8,
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: 16384
+        temperature: 0.9,
+        topK: 20,
+        topP: 0.85,
+        maxOutputTokens: 2048
       },
     });
 
-    let accumulatedText = "";
-    let processedLines = new Set();
-    let batchNumber = 0;
-    let pendingPlaces = [];
-    let allGroundingChunks = [];
+    const text = response.text || "";
+    console.log(`[Quick Search] Gemini response received`);
+
+    // Parse response
+    const suggestions = [];
+    const lines = text.split('\n');
     
-    const coordRegex = /\((-?\d+\.\d+),\s*(-?\d+\.\d+)\)/;
-    const ratingRegex = /\[(\d+\.?\d*)\/5\.0\]/;
-    const categoryRegex = /^[*-\s]*\[(.*?)\]/;
-
-    const parseLine = (line, sdkChunks) => {
+    for (const line of lines) {
       const trimmedLine = line.trim();
-      if (!trimmedLine.startsWith('-') && !trimmedLine.startsWith('*')) return null;
+      if (!trimmedLine || trimmedLine.length < 3) continue;
 
-      let category = "Other";
-      const catMatch = trimmedLine.match(categoryRegex);
-      if (catMatch) category = catMatch[1];
-
-      let category = "Other";
-      const catMatch = trimmedLine.match(categoryRegex);
-      if (catMatch) category = catMatch[1];
-
-      let lat = undefined;
-      let lng = undefined;
-      const coordMatch = trimmedLine.match(coordRegex);
-      if (coordMatch) {
-        lat = parseFloat(coordMatch[1]);
-        lng = parseFloat(coordMatch[2]);
-      }
-
-      let rating = undefined;
-      const ratingMatch = trimmedLine.match(ratingRegex);
-      if (ratingMatch) rating = parseFloat(ratingMatch[1]);
-
+      // Parse "Name | Category" format
       const parts = trimmedLine.split('|').map(p => p.trim());
-      let placeName = "Unknown Place";
-      if (parts.length > 1) {
-        placeName = parts[1].replace(/\[.*?\]/, '').trim();
-      }
-
-      let description = "";
-      const descPart = trimmedLine.split(' - ');
-      description = descPart.length > 1 ? descPart[descPart.length - 1].trim() : `Explore ${placeName} in ${city}.`;
-
-      const matchingChunk = sdkChunks.find(c => 
-        c.maps?.title?.toLowerCase().includes(placeName.toLowerCase()) || 
-        placeName.toLowerCase().includes(c.maps?.title?.toLowerCase() || "")
-      );
-
-      let placeId = matchingChunk?.maps?.placeId;
-      if (!placeId && matchingChunk) {
-        const uri = matchingChunk?.maps?.uri || "";
-        const placeIdMatch = uri.match(/place_id:([^&/]+)/) || uri.match(/query_place_id=([^&/]+)/);
-        placeId = placeIdMatch ? placeIdMatch[1] : undefined;
-      }
-
-      if (placeName && placeName !== "Unknown Place" && lat !== undefined && lng !== undefined) {
-        return {
-          title: placeName,
-          description: description,
-          category: category,
-          mapUrl: matchingChunk?.maps?.uri,
-          lat,
-          lng,
-          rating,
-          placeId: placeId
-        };
-      }
-      return null;
-    };
-
-    const sendBatch = (places) => {
-      if (places.length === 0) return;
-      batchNumber++;
-      const data = JSON.stringify({
-        batchNumber,
-        results: places,
-        total: places.length
-      });
-      res.write(`data: ${data}\n\n`);
-    };
-
-    // Process stream chunks
-    for await (const chunk of stream) {
-      const chunkText = chunk.text || "";
-      accumulatedText += chunkText;
-      
-      // Collect grounding chunks
-      const chunkGroundingChunks = chunk.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-      allGroundingChunks.push(...chunkGroundingChunks);
-
-      // Process complete lines
-      const lines = accumulatedText.split('\n');
-      
-      // Keep the last incomplete line in buffer
-      const lastLine = lines.pop();
-      
-      for (const line of lines) {
-        const lineHash = line.trim();
-        if (lineHash && !processedLines.has(lineHash)) {
-          processedLines.add(lineHash);
-          const place = parseLine(line, allGroundingChunks);
-          if (place) {
-            pendingPlaces.push(place);
-            
-            // Send batch of 10
-            if (pendingPlaces.length >= 10) {
-              sendBatch(pendingPlaces);
-              pendingPlaces = [];
-            }
-          }
+      if (parts.length >= 2) {
+        const title = parts[0].replace(/^[-*\d.)\s]+/, '').trim();
+        const category = parts[1].trim();
+        
+        if (title && category) {
+          suggestions.push({
+            title,
+            category,
+            description: `Explore ${title} in ${city}.`,
+            needsEnrichment: true, // Flag for Phase 2
+            lat: undefined,
+            lng: undefined,
+            rating: undefined,
+            placeId: undefined,
+            mapUrl: undefined
+          });
         }
       }
-      
-      accumulatedText = lastLine || "";
     }
 
-    // Process any remaining text
-    if (accumulatedText.trim()) {
-      const place = parseLine(accumulatedText, allGroundingChunks);
-      if (place) pendingPlaces.push(place);
-    }
+    console.log(`[Quick Search] Found ${suggestions.length} places`);
 
-    // Send final batch
-    if (pendingPlaces.length > 0) {
-      sendBatch(pendingPlaces);
-    }
-
-    // Send completion signal
-    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-    res.end();
+    res.json({ 
+      suggestions: suggestions.slice(0, 60),
+      quickSearch: true // Indicates this is quick search without full details
+    });
 
   } catch (error) {
     console.error('Gemini API Error:', error);
-    res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
-    res.end();
+    res.status(500).json({
+      error: 'Search failed',
+      message: error.message || 'An error occurred while processing your request'
+    });
   }
 }

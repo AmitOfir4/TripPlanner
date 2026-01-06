@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { flushSync } from 'react-dom';
 import { TripRecommendation, TripLayer } from '../types';
-import { fetchSuggestions, fetchSuggestionsStream } from '../geminiService';
+import { fetchSuggestions, enrichPlaces } from '../geminiService';
 import { API_LIMITS } from '../Constants';
 
 const STORAGE_KEYS = {
@@ -17,13 +17,14 @@ interface UseTripPlannerReturn {
   query: string;
   setQuery: (query: string) => void;
   loading: boolean;
-  loadingMore: boolean;
+  enriching: boolean;
   pendingSuggestions: TripRecommendation[];
   setPendingSuggestions: React.Dispatch<React.SetStateAction<TripRecommendation[]>>;
   savedLayers: TripLayer[];
   setSavedLayers: React.Dispatch<React.SetStateAction<TripLayer[]>>;
   requestCount: number;
-  handleSearch: (e: React.FormEvent | null, isLoadMore?: boolean) => Promise<void>;
+  handleSearch: (e: React.FormEvent | null) => Promise<void>;
+  handleEnrichSelected: () => Promise<void>;
   savePlace: (place: TripRecommendation) => void;
   resetTrip: () => void;
 }
@@ -40,7 +41,7 @@ export const useTripPlanner = (
   });
   
   const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [enriching, setEnriching] = useState(false);
   
   const [pendingSuggestions, setPendingSuggestionsState] = useState<TripRecommendation[]>(() => {
     const stored = localStorage.getItem(STORAGE_KEYS.PENDING);
@@ -104,7 +105,8 @@ export const useTripPlanner = (
     });
   };
 
-  const handleSearch = async (e: React.FormEvent | null, isLoadMore = false) => {
+  // PHASE 1: Quick search - just get place names (fast)
+  const handleSearch = async (e: React.FormEvent | null) => {
     e?.preventDefault();
     
     if (!currentCity || !query) return;
@@ -118,64 +120,63 @@ export const useTripPlanner = (
 
     lastRequestTime.current = now;
     setRequestCount(prev => prev + 1);
-
-    if (isLoadMore) {
-      setLoadingMore(true);
-    } else {
-      setLoading(true);
-      // Clear previous results when starting a new search
-      setPendingSuggestions([]);
-    }
+    setLoading(true);
+    setPendingSuggestions([]);
 
     try {
-      const excludeTitles = [
-        ...pendingSuggestions.map(p => p.title),
-        ...savedLayers.flatMap(l => l.places.map(p => p.title))
-      ];
+      console.log(`[Quick Search] Searching for places in ${currentCity}: "${query}"`);
       
-      // Use streaming for the initial search to get 150-200 results progressively
-      await fetchSuggestionsStream(
-        currentCity, 
-        query,
-        (batch, batchNumber) => {
-          console.log(`[Stream] Batch ${batchNumber}: Received ${batch.length} places`);
-          
-          // Add each batch as it arrives
-          setPendingSuggestions(prev => {
-            // Avoid duplicates
-            const newPlaces = batch.filter(
-              b => !prev.find(p => p.title === b.title)
-            );
-            const updated = [...prev, ...newPlaces];
-            console.log(`[Stream] Batch ${batchNumber}: Added ${newPlaces.length} new places, total now: ${updated.length}`);
-            return updated;
-          });
-          
-          // Set loading to false after first batch so UI shows results
-          if (batchNumber === 1) {
-            console.log('[Stream] First batch received, setting loading to false');
-            setLoading(false);
-          }
-        },
-        () => {
-          // On complete
-          setLoading(false);
-          setLoadingMore(false);
-          console.log('Search completed');
-        },
-        (error) => {
-          // On error
-          console.error('Streaming error:', error);
-          setLoading(false);
-          setLoadingMore(false);
-        },
-        excludeTitles,
-        userLocation
-      );
+      const { suggestions, quickSearch } = await fetchSuggestions(currentCity, query);
+      
+      console.log(`[Quick Search] Received ${suggestions.length} places (quick=${quickSearch})`);
+      
+      setPendingSuggestions(suggestions);
+      setLoading(false);
     } catch (err) {
       console.error('Error fetching suggestions:', err);
       setLoading(false);
-      setLoadingMore(false);
+    }
+  };
+
+  // PHASE 2: Enrich selected places with coordinates, ratings, etc.
+  const handleEnrichSelected = async () => {
+    if (!currentCity) return;
+
+    const placesToEnrich = savedLayers.flatMap(l => l.places).filter(p => p.needsEnrichment);
+    
+    if (placesToEnrich.length === 0) {
+      console.log('[Enrich] No places need enrichment');
+      return;
+    }
+
+    setEnriching(true);
+
+    try {
+      console.log(`[Enrich] Enriching ${placesToEnrich.length} selected places`);
+      
+      const { enrichedPlaces, total } = await enrichPlaces(
+        placesToEnrich,
+        currentCity,
+        userLocation
+      );
+      
+      console.log(`[Enrich] Successfully enriched ${total} places`);
+      
+      // Update saved layers with enriched data
+      setSavedLayers(prev => 
+        prev.map(layer => ({
+          ...layer,
+          places: layer.places.map(place => {
+            const enriched = enrichedPlaces.find(e => e.title === place.title);
+            return enriched || place;
+          })
+        }))
+      );
+      
+      setEnriching(false);
+    } catch (err) {
+      console.error('Error enriching places:', err);
+      setEnriching(false);
     }
   };
 
@@ -221,13 +222,14 @@ export const useTripPlanner = (
     query,
     setQuery,
     loading,
-    loadingMore,
+    enriching,
     pendingSuggestions,
     setPendingSuggestions,
     savedLayers,
     setSavedLayers,
     requestCount,
     handleSearch,
+    handleEnrichSelected,
     savePlace,
     resetTrip
   };

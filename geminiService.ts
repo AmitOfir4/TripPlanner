@@ -1,16 +1,18 @@
 
 import { TripRecommendation, GroundingChunk } from "./types";
 
-// Backend API endpoint - change this based on your deployment
+// Backend API endpoints
 const API_ENDPOINT = import.meta.env.VITE_API_ENDPOINT || 
                      (import.meta.env.DEV ? 'http://localhost:3001/api/search' : '/api/search');
 
+const ENRICH_ENDPOINT = import.meta.env.VITE_ENRICH_ENDPOINT || 
+                        (import.meta.env.DEV ? 'http://localhost:3001/api/enrich' : '/api/enrich');
+
+// PHASE 1: Quick search - just get place names and categories (fast)
 export const fetchSuggestions = async (
   city: string,
-  query: string,
-  excludeTitles: string[] = [],
-  latLng?: { latitude: number, longitude: number }
-): Promise<{ suggestions: TripRecommendation[], sources: GroundingChunk[] }> => {
+  query: string
+): Promise<{ suggestions: TripRecommendation[], quickSearch: boolean }> => {
   try {
     const response = await fetch(API_ENDPOINT, {
       method: 'POST',
@@ -19,9 +21,7 @@ export const fetchSuggestions = async (
       },
       body: JSON.stringify({
         city,
-        query,
-        excludeTitles,
-        latLng
+        query
       })
     });
 
@@ -34,7 +34,7 @@ export const fetchSuggestions = async (
     const data = await response.json();
     return {
       suggestions: data.suggestions || [],
-      sources: data.sources || []
+      quickSearch: data.quickSearch || false
     };
   } catch (error) {
     console.error('Error fetching suggestions:', error);
@@ -42,7 +42,42 @@ export const fetchSuggestions = async (
   }
 };
 
-// Streaming version for large result sets
+// PHASE 2: Enrich selected places with full details (coordinates, ratings, etc.)
+export const enrichPlaces = async (
+  places: TripRecommendation[],
+  city: string,
+  latLng?: { latitude: number, longitude: number }
+): Promise<{ enrichedPlaces: TripRecommendation[], total: number }> => {
+  try {
+    const response = await fetch(ENRICH_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        places,
+        city,
+        latLng
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return {
+      enrichedPlaces: data.enrichedPlaces || [],
+      total: data.total || 0
+    };
+  } catch (error) {
+    console.error('Error enriching places:', error);
+    throw error;
+  }
+};
+
+// OLD STREAMING VERSION - Kept for reference, but not used in new flow
 export const fetchSuggestionsStream = async (
   city: string,
   query: string,
