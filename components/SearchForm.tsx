@@ -1,5 +1,5 @@
-import React from 'react';
-import { MapPin, MessageSquare, Compass, Loader2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { MapPin, MessageSquare, Compass, Loader2, Sparkles, Lightbulb } from 'lucide-react';
 import { TRANSLATIONS } from '../constants';
 
 interface SearchFormProps {
@@ -12,6 +12,24 @@ interface SearchFormProps {
   onSearch: (e: React.FormEvent | null) => void;
 }
 
+interface PromptExample {
+  query: string;
+  label: string;
+  icon: string;
+}
+
+const PROMPT_EXAMPLES: PromptExample[] = [
+  { query: 'romantic cafes and hidden gardens', label: 'Romantic Spots', icon: '💕' },
+  { query: 'authentic local food and street markets', label: 'Food & Markets', icon: '🍜' },
+  { query: 'historic architecture and museums', label: 'Art & Culture', icon: '🎨' },
+  { query: 'rooftop bars and live music venues', label: 'Nightlife', icon: '🎷' },
+  { query: 'luxury shopping and spa experiences', label: 'Luxury & Wellness', icon: '✨' },
+  { query: 'outdoor activities and scenic viewpoints', label: 'Nature & Adventure', icon: '🏞️' },
+  { query: 'family-friendly attractions and parks', label: 'Family Fun', icon: '🎡' },
+  { query: 'hidden gems and local favorites', label: 'Off the Beaten Path', icon: '🔍' },
+  { query: 'main attractions and must-see landmarks', label: 'Main Attractions', icon: '🌟' },
+];
+
 export const SearchForm: React.FC<SearchFormProps> = ({
   currentCity,
   query,
@@ -21,19 +39,31 @@ export const SearchForm: React.FC<SearchFormProps> = ({
   onQueryChange,
   onSearch
 }) => {
+  const [showExamples, setShowExamples] = useState(!currentCity && !query);
   const isDisabled = loading || !currentCity || !query;
 
+  const handleExampleClick = (example: PromptExample) => {
+    onQueryChange(example.query);
+    setShowExamples(false);
+  };
+
+  const handleInputFocus = () => {
+    if (!currentCity && !query) {
+      setShowExamples(true);
+    }
+  };
+
   return (
-    <section className="space-y-8">
-      <div className="space-y-2">
+    <section className="search-form-section space-y-8">
+      <div className="search-header space-y-2">
         <h2 className="text-4xl font-black text-slate-900">{TRANSLATIONS.builder}</h2>
         <p className="text-slate-500 font-medium">
           Use AI to curate the perfect local experience.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <div className="relative">
+      <div className="search-inputs-grid grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="city-input-wrapper relative">
           <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">
             {TRANSLATIONS.cityPrompt}
           </label>
@@ -45,11 +75,12 @@ export const SearchForm: React.FC<SearchFormProps> = ({
               className="w-full pl-12 py-4 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-600 transition-all outline-none font-bold text-slate-800 shadow-sm"
               value={currentCity}
               onChange={(e) => onCityChange(e.target.value)}
+              onFocus={handleInputFocus}
             />
           </div>
         </div>
         
-        <div className="relative">
+        <div className="query-input-wrapper relative">
           <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">
             {TRANSLATIONS.queryPrompt}
           </label>
@@ -62,15 +93,47 @@ export const SearchForm: React.FC<SearchFormProps> = ({
               value={query}
               onChange={(e) => onQueryChange(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && onSearch(null)}
+              onFocus={handleInputFocus}
             />
           </div>
         </div>
       </div>
 
+      {/* Prompt Examples */}
+      {showExamples && (
+        <div className="prompt-examples-section animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="flex items-center gap-2 mb-4">
+            <Lightbulb className="w-4 h-4 text-amber-500" />
+            <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Try these popular searches</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {PROMPT_EXAMPLES.map((example, idx) => (
+              <button
+                key={idx}
+                onClick={() => handleExampleClick(example)}
+                className="prompt-example-card group text-left p-4 bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-2xl hover:border-indigo-300 hover:shadow-lg transition-all duration-200 active:scale-95"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl group-hover:scale-110 transition-transform">{example.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-black text-sm text-slate-900 group-hover:text-indigo-600 transition-colors">
+                      {example.label}
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-1 line-clamp-2">
+                      {example.query}
+                    </div>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <button 
         onClick={() => onSearch(null)}
         disabled={isDisabled}
-        className="w-full bg-slate-900 hover:bg-black disabled:bg-slate-100 disabled:text-slate-400 text-white font-black py-5 rounded-2xl flex items-center justify-center gap-3 transition-all shadow-xl active:scale-[0.99]"
+        className="search-submit-button w-full bg-slate-900 hover:bg-black disabled:bg-slate-100 disabled:text-slate-400 text-white font-black py-5 rounded-2xl flex items-center justify-center gap-3 transition-all shadow-xl active:scale-[0.99]"
       >
         {loading ? (
           <Loader2 className="w-6 h-6 animate-spin" />
