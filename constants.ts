@@ -29,7 +29,7 @@ export const API_LIMITS = {
 } as const;
 
 export const CATEGORY_RULES: Record<string, string[]> = {
-  'Tourist Attractions': ['landmark', 'attraction', 'historical', 'nature', 'monument', 'sight'],
+  'Tourist Attractions': ['attraction', 'historical', 'nature', 'monument', 'sight'],
   'Bar': ['nightlife', 'bar', 'club', 'pub', 'cocktail'],
   'Restaurants': ['food', 'restaurant', 'dining', 'cafe'],
   'Museums & Galleries': ['museum', 'gallery', 'art'],

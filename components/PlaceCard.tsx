@@ -76,19 +76,23 @@ export const PlaceCard: React.FC<PlaceCardProps> = ({
         )}
         
         <div className="pt-4 flex items-center justify-between gap-4">
-          {place.mapUrl ? (
-            <a 
-              href={place.mapUrl} 
-              target="_blank" 
-              rel="noreferrer" 
-              className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-indigo-600 transition-colors"
-            >
-              <MapPin className="w-4 h-4" />
-              Google Maps
-            </a>
-          ) : (
-            <div />
-          )}
+          <a 
+            href={
+              place.mapUrl ||
+              (place.placeId 
+                ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.title)}&query_place_id=${place.placeId}`
+                : place.lat && place.lng
+                ? `https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`
+                : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.title)}`
+              )
+            } 
+            target="_blank" 
+            rel="noreferrer" 
+            className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-indigo-600 transition-colors"
+          >
+            <MapPin className="w-4 h-4" />
+            Google Maps
+          </a>
           
           <div className="flex gap-2">
             <button 

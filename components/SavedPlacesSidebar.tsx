@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
   Layers, Search, ChevronRight, Trash2, Star, 
-  Download, Info, Upload, Sparkles 
+  Download, Info, Upload, Sparkles, MapPin 
 } from 'lucide-react';
 import { TripLayer, TripRecommendation } from '../types';
 import { PlaceImage } from './PlaceImage';
@@ -184,6 +184,23 @@ const SavedPlaceCard: React.FC<SavedPlaceCardProps> = ({ place, index, onRemove 
           </span>
         )}
       </div>
+      <a
+        href={
+          place.mapUrl ||
+          (place.placeId 
+            ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.title)}&query_place_id=${place.placeId}`
+            : place.lat && place.lng
+            ? `https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`
+            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.title)}`
+          )
+        }
+        target="_blank"
+        rel="noreferrer"
+        className="flex items-center gap-1 mt-1.5 text-[9px] font-bold text-slate-400 hover:text-indigo-600 transition-colors w-fit"
+      >
+        <MapPin className="w-3 h-3" />
+        Google Maps
+      </a>
     </div>
     
     <button 
