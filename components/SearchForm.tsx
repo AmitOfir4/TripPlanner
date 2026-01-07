@@ -6,6 +6,7 @@ interface SearchFormProps {
   currentCity: string;
   query: string;
   loading: boolean;
+  hasExistingPlaces?: boolean;
   onCityChange: (city: string) => void;
   onQueryChange: (query: string) => void;
   onSearch: (e: React.FormEvent | null) => void;
@@ -15,6 +16,7 @@ export const SearchForm: React.FC<SearchFormProps> = ({
   currentCity,
   query,
   loading,
+  hasExistingPlaces = false,
   onCityChange,
   onQueryChange,
   onSearch
@@ -76,7 +78,7 @@ export const SearchForm: React.FC<SearchFormProps> = ({
           <Compass className="w-6 h-6" />
         )}
         <span className="text-lg uppercase tracking-widest">
-          {loading ? TRANSLATIONS.searching : TRANSLATIONS.findPlaces}
+          {loading ? TRANSLATIONS.searching : (hasExistingPlaces ? TRANSLATIONS.loadMore : TRANSLATIONS.findPlaces)}
         </span>
       </button>
     </section>

@@ -121,16 +121,35 @@ export const useTripPlanner = (
     lastRequestTime.current = now;
     setRequestCount(prev => prev + 1);
     setLoading(true);
-    setPendingSuggestions([]);
+    
+    // Check if this is an additional search (we already have places)
+    const isAdditionalSearch = pendingSuggestions.length > 0;
+    const existingTitles = pendingSuggestions.map(p => p.title);
+    
+    // For additional searches, don't clear existing suggestions
+    if (!isAdditionalSearch) {
+      setPendingSuggestions([]);
+    }
 
     try {
-      console.log(`[Quick Search] Searching for places in ${currentCity}: "${query}"`);
+      console.log(`[Quick Search] ${isAdditionalSearch ? 'Additional' : 'Initial'} search for places in ${currentCity}: "${query}"`);
       
-      const { suggestions, quickSearch } = await fetchSuggestions(currentCity, query);
+      const { suggestions, quickSearch } = await fetchSuggestions(
+        currentCity, 
+        query,
+        isAdditionalSearch,
+        existingTitles
+      );
       
-      console.log(`[Quick Search] Received ${suggestions.length} places (quick=${quickSearch})`);
+      console.log(`[Quick Search] Received ${suggestions.length} places (quick=${quickSearch}, additional=${isAdditionalSearch})`);
       
-      setPendingSuggestions(suggestions);
+      // For additional searches, append to existing suggestions
+      if (isAdditionalSearch) {
+        setPendingSuggestions(prev => [...prev, ...suggestions]);
+      } else {
+        setPendingSuggestions(suggestions);
+      }
+      
       setLoading(false);
     } catch (err) {
       console.error('Error fetching suggestions:', err);

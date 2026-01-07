@@ -159,6 +159,7 @@ const App: React.FC = () => {
               currentCity={currentCity}
               query={query}
               loading={loading}
+              hasExistingPlaces={pendingSuggestions.length > 0}
               onCityChange={setCurrentCity}
               onQueryChange={setQuery}
               onSearch={handleSearch}

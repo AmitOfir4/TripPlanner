@@ -11,7 +11,9 @@ const ENRICH_ENDPOINT = import.meta.env.VITE_ENRICH_ENDPOINT ||
 // PHASE 1: Quick search - just get place names and categories (fast)
 export const fetchSuggestions = async (
   city: string,
-  query: string
+  query: string,
+  isAdditional: boolean = false,
+  excludeTitles: string[] = []
 ): Promise<{ suggestions: TripRecommendation[], quickSearch: boolean }> => {
   try {
     const response = await fetch(API_ENDPOINT, {
@@ -21,7 +23,9 @@ export const fetchSuggestions = async (
       },
       body: JSON.stringify({
         city,
-        query
+        query,
+        isAdditional,
+        excludeTitles
       })
     });
 

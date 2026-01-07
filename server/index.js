@@ -22,7 +22,7 @@ app.get('/api/health', (req, res) => {
 // Quick search endpoint - just get place names
 app.post('/api/search', async (req, res) => {
   try {
-    const { city, query, excludeTitles = [] } = req.body;
+    const { city, query, isAdditional = false, excludeTitles = [] } = req.body;
 
     if (!city || !query) {
       return res.status(400).json({
@@ -49,27 +49,30 @@ app.post('/api/search', async (req, res) => {
     // Detect query type
     const isTripPlanning = /\b(trip|itinerary|plan|visit|days?|weekend)\b/i.test(query);
     
-    console.log(`[Quick Search] City: ${city}, Query: "${query}", Type: ${isTripPlanning ? 'Trip Planning' : 'Specific'}`);
+    // Determine number of places based on whether it's an additional search
+    const placeCount = isAdditional ? 20 : 60;
+    
+    console.log(`[Quick Search] City: ${city}, Query: "${query}", Type: ${isTripPlanning ? 'Trip Planning' : 'Specific'}, Additional: ${isAdditional}, Count: ${placeCount}`);
     
     // Stronger prompt with numbered format and descriptions
-    const categoryBreakdown = isTripPlanning 
+    const categoryBreakdown = isTripPlanning && !isAdditional
       ? '\n- 15 top attractions/landmarks\n- 15 restaurants (various cuisines)\n- 10 hotels (different price ranges)\n- 10 shopping destinations\n- 10 entertainment/activities'
       : '';
     
-    const prompt = `List 60 places in ${city} for: "${query}"
+    const prompt = `List ${placeCount} places in ${city} for: "${query}"
 ${excludeText}
 ${categoryBreakdown}
 
-FORMAT - Use numbered list with brief descriptions (1-60):
+FORMAT - Use numbered list with brief descriptions (1-${placeCount}):
 1. Place Name | Category | Short description (5-10 words)
 2. Place Name | Category | Short description (5-10 words)
-...continue to 60
+...continue to ${placeCount}
 
 Example:
 1. Burj Khalifa | Landmark | World's tallest building with observation decks
 2. Dubai Mall | Shopping | Massive mall with aquarium and ice rink
 
-IMPORTANT: Complete the FULL list of 60 items. Count to 60.`;
+IMPORTANT: Complete the FULL list of ${placeCount} items. Count to ${placeCount}.`;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
@@ -111,8 +114,9 @@ IMPORTANT: Complete the FULL list of 60 items. Count to 60.`;
     console.log(`[Quick Search] Found ${suggestions.length} places`);
 
     res.json({ 
-      suggestions: suggestions.slice(0, 60),
-      quickSearch: true // Indicates this is quick search without full details
+      suggestions: suggestions.slice(0, placeCount),
+      quickSearch: true, // Indicates this is quick search without full details
+      isAdditional: isAdditional
     });
 
   } catch (error) {

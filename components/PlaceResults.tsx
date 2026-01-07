@@ -49,8 +49,8 @@ export const PlaceResults: React.FC<PlaceResultsProps> = ({
 }) => {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['Tourist Attractions']));
 
-  // Show loading state
-  if (loading) {
+  // Show loading state only if there are no existing suggestions
+  if (loading && suggestions.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center space-y-4">
@@ -61,7 +61,7 @@ export const PlaceResults: React.FC<PlaceResultsProps> = ({
     );
   }
 
-  if (suggestions.length === 0) {
+  if (suggestions.length === 0 && !loading) {
     return (
       <div className="py-24 text-center space-y-8 flex flex-col items-center">
         <div className="relative">
@@ -214,6 +214,16 @@ export const PlaceResults: React.FC<PlaceResultsProps> = ({
           );
         })}
       </div>
+
+      {/* Loading indicator for additional searches */}
+      {loading && suggestions.length > 0 && (
+        <div className="flex items-center justify-center py-8">
+          <div className="text-center space-y-4 bg-white rounded-3xl border-2 border-indigo-200 p-8 shadow-lg">
+            <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-600" />
+            <p className="text-slate-600 font-bold">Finding more places...</p>
+          </div>
+        </div>
+      )}
 
       <div ref={suggestionsEndRef} />
     </>
