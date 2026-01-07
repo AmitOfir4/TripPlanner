@@ -12,6 +12,7 @@ interface PlaceResultsProps {
   onSavePlace: (place: TripRecommendation) => void;
   onDismissPlace: (place: TripRecommendation) => void;
   onIconChange?: (place: TripRecommendation, iconId: string) => void;
+  onViewOnMap?: (place: TripRecommendation) => void;
 }
 
 // Normalize categories - group similar ones
@@ -45,7 +46,8 @@ export const PlaceResults: React.FC<PlaceResultsProps> = ({
   suggestionsEndRef,
   onSavePlace,
   onDismissPlace,
-  onIconChange
+  onIconChange,
+  onViewOnMap
 }) => {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['Tourist Attractions']));
 
@@ -207,6 +209,7 @@ export const PlaceResults: React.FC<PlaceResultsProps> = ({
                         onSave={onSavePlace}
                         onDismiss={onDismissPlace}
                         onIconChange={onIconChange}
+                        onViewOnMap={onViewOnMap}
                       />
                     ))}
                   </div>

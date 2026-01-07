@@ -1,9 +1,10 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { Header } from './components/Header';
 import { SearchForm } from './components/SearchForm';
 import { PlaceResults } from './components/PlaceResults';
 import { SavedPlacesSidebar } from './components/SavedPlacesSidebar';
 import { ImportModal } from './components/ImportModal';
+import { MapView } from './components/MapView';
 import { useGoogleAuth } from './hooks/useGoogleAuth';
 import { useTripPlanner } from './hooks/useTripPlanner';
 import { useMapImport } from './hooks/useMapImport';
@@ -16,6 +17,7 @@ const App: React.FC = () => {
   const userLocation = useUserLocation();
   const { googleUser, login, logout } = useGoogleAuth();
   const suggestionsEndRef = useRef<HTMLDivElement>(null);
+  const [focusedPlace, setFocusedPlace] = useState<TripRecommendation | null>(null);
 
   const {
     currentCity,
@@ -165,6 +167,14 @@ const App: React.FC = () => {
               onSearch={handleSearch}
             />
 
+            {currentCity && (
+              <MapView
+                city={currentCity}
+                places={pendingSuggestions}
+                focusedPlace={focusedPlace}
+              />
+            )}
+
             <div className="search-results-section space-y-8 pb-20">
               <PlaceResults
                 loading={loading}
@@ -174,6 +184,7 @@ const App: React.FC = () => {
                 onSavePlace={savePlace}
                 onDismissPlace={handleDismissPlace}
                 onIconChange={handleIconChange}
+                onViewOnMap={setFocusedPlace}
               />
             </div>
           </div>
