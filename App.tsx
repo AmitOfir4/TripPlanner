@@ -167,7 +167,7 @@ const App: React.FC = () => {
               onSearch={handleSearch}
             />
 
-            {currentCity && (
+            {currentCity && pendingSuggestions.length > 0 && (
               <MapView
                 city={currentCity}
                 places={pendingSuggestions}
