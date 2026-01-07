@@ -143,7 +143,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col antialiased">
+    <div className="app-container min-h-screen bg-slate-50 flex flex-col antialiased">
       <Header
         googleUser={googleUser}
         onImportClick={handleImportFromMyMaps}
@@ -151,10 +151,10 @@ const App: React.FC = () => {
         onReset={resetTrip}
       />
 
-      <main className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+      <main className="app-main-content flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Discovery Area */}
-        <div className="flex-1 overflow-y-auto p-6 lg:p-12">
-          <div className="max-w-4xl mx-auto space-y-12">
+        <div className="discovery-panel flex-1 overflow-y-auto p-6 lg:p-12">
+          <div className="discovery-content-wrapper max-w-4xl mx-auto space-y-12">
             <SearchForm
               currentCity={currentCity}
               query={query}
@@ -165,7 +165,7 @@ const App: React.FC = () => {
               onSearch={handleSearch}
             />
 
-            <div className="space-y-8 pb-20">
+            <div className="search-results-section space-y-8 pb-20">
               <PlaceResults
                 loading={loading}
                 currentCity={currentCity}
