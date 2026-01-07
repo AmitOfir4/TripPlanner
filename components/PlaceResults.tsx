@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Sparkles, Loader2, RefreshCw, MapPin, ChevronDown, ChevronUp, Plus } from 'lucide-react';
 import { TripRecommendation } from '../types';
 import { PlaceCard } from './PlaceCard';
-import { TRANSLATIONS, CATEGORY_RULES } from '../Constants';
+import { TRANSLATIONS, CATEGORY_RULES } from '../constants';
 
 interface PlaceResultsProps {
   loading: boolean;

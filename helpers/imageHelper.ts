@@ -1,4 +1,4 @@
-import { CATEGORY_IMAGES } from '../Constants';
+import { CATEGORY_IMAGES } from '../constants';
 
 const IMAGE_MAPPING: Record<string, string[]> = {
   FOOD: ['food', 'restaurant', 'cafe', 'dining'],

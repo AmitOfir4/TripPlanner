@@ -1,6 +1,6 @@
 
 import { TripData, TripRecommendation } from "./types";
-import { CATEGORY_RULES, KML_ICON_STYLES } from "./Constants";
+import { CATEGORY_RULES, KML_ICON_STYLES } from "./constants";
 
 /**
  * Maps categories to specific KML icon styles using shared constants.

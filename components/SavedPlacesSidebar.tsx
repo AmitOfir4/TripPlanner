@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { TripLayer, TripRecommendation } from '../types';
 import { PlaceImage } from './PlaceImage';
-import { TRANSLATIONS } from '../Constants';
+import { TRANSLATIONS } from '../constants';
 import { GoogleUser } from '../googleAuthService';
 
 interface SavedPlacesSidebarProps {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { MapPin, MessageSquare, Compass, Loader2 } from 'lucide-react';
-import { TRANSLATIONS } from '../Constants';
+import { TRANSLATIONS } from '../constants';
 
 interface SearchFormProps {
   currentCity: string;

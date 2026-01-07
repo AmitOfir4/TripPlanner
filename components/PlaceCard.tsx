@@ -2,7 +2,7 @@ import React from 'react';
 import { MapPin, Plus, X, Star } from 'lucide-react';
 import { TripRecommendation } from '../types';
 import { PlaceImage } from './PlaceImage';
-import { TRANSLATIONS, CATEGORY_RULES, KML_ICON_STYLES } from '../Constants';
+import { TRANSLATIONS, CATEGORY_RULES, KML_ICON_STYLES } from '../constants';
 import { KmlIconSelector } from './KmlIconSelector';
 
 interface PlaceCardProps {

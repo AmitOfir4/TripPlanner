@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
-import { AVAILABLE_KML_ICONS } from '../Constants';
+import { AVAILABLE_KML_ICONS } from '../constants';
 
 interface KmlIconSelectorProps {
   currentIconId: string;

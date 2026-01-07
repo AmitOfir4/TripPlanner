@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { flushSync } from 'react-dom';
 import { TripRecommendation, TripLayer } from '../types';
 import { fetchSuggestions, enrichPlaces } from '../geminiService';
-import { API_LIMITS } from '../Constants';
+import { API_LIMITS } from '../constants';
 
 const STORAGE_KEYS = {
   CITY: 'tripplanner_current_city',
