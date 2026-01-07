@@ -39,18 +39,10 @@ export const SearchForm: React.FC<SearchFormProps> = ({
   onQueryChange,
   onSearch
 }) => {
-  const [showExamples, setShowExamples] = useState(!currentCity && !query);
   const isDisabled = loading || !currentCity || !query;
 
   const handleExampleClick = (example: PromptExample) => {
     onQueryChange(example.query);
-    setShowExamples(false);
-  };
-
-  const handleInputFocus = () => {
-    if (!currentCity && !query) {
-      setShowExamples(true);
-    }
   };
 
   return (
@@ -75,7 +67,6 @@ export const SearchForm: React.FC<SearchFormProps> = ({
               className="w-full pl-12 py-4 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-600 transition-all outline-none font-bold text-slate-800 shadow-sm"
               value={currentCity}
               onChange={(e) => onCityChange(e.target.value)}
-              onFocus={handleInputFocus}
             />
           </div>
         </div>
@@ -93,14 +84,13 @@ export const SearchForm: React.FC<SearchFormProps> = ({
               value={query}
               onChange={(e) => onQueryChange(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && onSearch(null)}
-              onFocus={handleInputFocus}
             />
           </div>
         </div>
       </div>
 
       {/* Prompt Examples */}
-      {showExamples && (
+      {!query && (
         <div className="prompt-examples-section animate-in fade-in slide-in-from-top-4 duration-300">
           <div className="flex items-center gap-2 mb-4">
             <Lightbulb className="w-4 h-4 text-amber-500" />
