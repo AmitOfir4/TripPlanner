@@ -99,8 +99,13 @@ const App: React.FC = () => {
   };
 
   // Trip actions
-  const handleDownload = () => {
-    TripService.downloadTrip(savedLayers, currentCity);
+  const handleDownload = async () => {
+    try {
+      await TripService.downloadTrip(savedLayers, currentCity);
+    } catch (error) {
+      console.error('Error downloading trip:', error);
+      alert('Failed to download KML file. Please try again.');
+    }
   };
 
   const handleUploadToDrive = async () => {

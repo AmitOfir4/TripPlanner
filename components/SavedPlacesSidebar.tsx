@@ -28,7 +28,6 @@ export const SavedPlacesSidebar: React.FC<SavedPlacesSidebarProps> = ({
   onEnrichSelected
 }) => {
   const totalPlaces = savedLayers.reduce((acc, l) => acc + l.places.length, 0);
-  const needsEnrichment = savedLayers.some(l => l.places.some(p => p.needsEnrichment));
 
   return (
     <aside className="lg:w-[440px] shrink-0 bg-white border-l border-slate-200 overflow-y-auto p-8 flex flex-col">
@@ -50,12 +49,9 @@ export const SavedPlacesSidebar: React.FC<SavedPlacesSidebarProps> = ({
 
       <ActionButtons 
         hasPlaces={savedLayers.length > 0}
-        needsEnrichment={needsEnrichment}
-        enriching={enriching}
         googleUser={googleUser}
         onDownload={onDownload}
         onUploadToDrive={onUploadToDrive}
-        onEnrichSelected={onEnrichSelected}
       />
 
       <div className="flex-1 space-y-12">
@@ -214,51 +210,29 @@ const SavedPlaceCard: React.FC<SavedPlaceCardProps> = ({ place, index, onRemove 
 
 interface ActionButtonsProps {
   hasPlaces: boolean;
-  needsEnrichment: boolean;
-  enriching: boolean;
   googleUser: GoogleUser | null;
   onDownload: () => void;
   onUploadToDrive: () => void;
-  onEnrichSelected?: () => void;
 }
 
 const ActionButtons: React.FC<ActionButtonsProps> = ({
   hasPlaces,
-  needsEnrichment,
-  enriching,
   googleUser,
   onDownload,
-  onUploadToDrive,
-  onEnrichSelected
+  onUploadToDrive
 }) => (
   <div className="mb-12 space-y-4 shrink-0">
     <div className="bg-slate-900 text-slate-400 p-6 rounded-[2rem] shadow-xl flex gap-4">
       <Info className="w-6 h-6 text-indigo-400 shrink-0" />
       <p className="text-[10px] font-bold leading-relaxed tracking-wide text-slate-300">
-        {needsEnrichment 
-          ? "Places need enrichment to get coordinates and ratings. Click 'Get Full Details' below."
-          : TRANSLATIONS.layersTip}
+        {TRANSLATIONS.layersTip}
       </p>
     </div>
     
-    {needsEnrichment && onEnrichSelected && (
-      <button 
-        disabled={!hasPlaces || enriching}
-        onClick={onEnrichSelected}
-        className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-slate-100 disabled:text-slate-400 text-white font-black py-5 rounded-[2rem] flex items-center justify-center gap-3 transition-all shadow-xl shadow-purple-200 active:scale-[0.98]"
-      >
-        <Sparkles className="w-5 h-5" />
-        <span className="text-sm uppercase tracking-widest">
-          {enriching ? 'Getting Details...' : 'Get Full Details'}
-        </span>
-      </button>
-    )}
-    
     <button 
-      disabled={!hasPlaces || needsEnrichment}
+      disabled={!hasPlaces}
       onClick={onDownload}
       className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-100 disabled:text-slate-400 text-white font-black py-5 rounded-[2rem] flex items-center justify-center gap-3 transition-all shadow-xl shadow-indigo-200 active:scale-[0.98]"
-      title={needsEnrichment ? "Enrich places first to download" : ""}
     >
       <Download className="w-5 h-5" />
       <span className="text-sm uppercase tracking-widest">{TRANSLATIONS.downloadKml}</span>
@@ -266,10 +240,9 @@ const ActionButtons: React.FC<ActionButtonsProps> = ({
     
     {googleUser && (
       <button 
-        disabled={!hasPlaces || needsEnrichment}
+        disabled={!hasPlaces}
         onClick={onUploadToDrive}
         className="w-full bg-green-600 hover:bg-green-700 disabled:bg-slate-100 disabled:text-slate-400 text-white font-black py-5 rounded-[2rem] flex items-center justify-center gap-3 transition-all shadow-xl shadow-green-200 active:scale-[0.98]"
-        title={needsEnrichment ? "Enrich places first to upload" : ""}
       >
         <Upload className="w-5 h-5" />
         <span className="text-sm uppercase tracking-widest">Upload to Google Maps</span>

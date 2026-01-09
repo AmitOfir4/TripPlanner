@@ -1,3 +1,4 @@
+/// <reference types="@types/google.maps" />
 import { TripData, TripLayer } from '../types';
 import { generateKml, downloadFile } from '../utils';
 import { uploadKMLToDrive } from '../googleDriveService';
@@ -12,14 +13,65 @@ export class TripService {
     };
   }
 
-  static downloadTrip(savedLayers: TripLayer[], cityName: string): void {
+  static async downloadTrip(savedLayers: TripLayer[], cityName: string): Promise<void> {
     if (savedLayers.length === 0) return;
     
-    const tripData = this.createTripData(savedLayers);
+    // Geocode any places without coordinates
+    const enrichedLayers = await this.geocodePlacesIfNeeded(savedLayers, cityName);
+    
+    const tripData = this.createTripData(enrichedLayers);
     const kml = generateKml(tripData);
     const fileName = `Trip_${cityName || 'Planner'}.kml`;
     
     downloadFile(kml, fileName, "application/vnd.google-earth.kml+xml");
+  }
+
+  static async geocodePlacesIfNeeded(layers: TripLayer[], cityName: string): Promise<TripLayer[]> {
+    const geocoder = new google.maps.Geocoder();
+    
+    const enrichedLayers = await Promise.all(
+      layers.map(async (layer) => {
+        const enrichedPlaces = await Promise.all(
+          layer.places.map(async (place) => {
+            // If place already has coordinates, return as is
+            if (place.lat && place.lng) {
+              return place;
+            }
+            
+            // Geocode the place
+            try {
+              const searchQuery = `${place.title}, ${cityName}`;
+              const results = await new Promise<google.maps.GeocoderResult[]>((resolve, reject) => {
+                geocoder.geocode({ address: searchQuery }, (results, status) => {
+                  if (status === 'OK' && results) {
+                    resolve(results);
+                  } else {
+                    reject(new Error(`Geocoding failed for ${place.title}`));
+                  }
+                });
+              });
+              
+              if (results && results[0]) {
+                const location = results[0].geometry.location;
+                return {
+                  ...place,
+                  lat: location.lat(),
+                  lng: location.lng()
+                };
+              }
+            } catch (error) {
+              console.warn(`Failed to geocode ${place.title}:`, error);
+            }
+            
+            return place;
+          })
+        );
+        
+        return { ...layer, places: enrichedPlaces };
+      })
+    );
+    
+    return enrichedLayers;
   }
 
   static async uploadToGoogleDrive(
@@ -31,7 +83,10 @@ export class TripService {
       throw new Error('No places to upload');
     }
 
-    const tripData = this.createTripData(savedLayers);
+    // Geocode any places without coordinates
+    const enrichedLayers = await this.geocodePlacesIfNeeded(savedLayers, cityName);
+    
+    const tripData = this.createTripData(enrichedLayers);
     const kml = generateKml(tripData);
     const fileName = `Trip_${cityName || 'Planner'}_${new Date().toISOString().split('T')[0]}.kml`;
     

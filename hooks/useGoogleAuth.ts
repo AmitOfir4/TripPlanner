@@ -28,6 +28,30 @@ export const useGoogleAuth = () => {
     }
   }, [googleUser]);
 
+  // Validate token on mount if user is cached
+  useEffect(() => {
+    const validateToken = async () => {
+      if (!googleUser) return;
+
+      try {
+        // Test the token by making a simple API call
+        const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+          headers: { Authorization: `Bearer ${googleUser.accessToken}` },
+        });
+
+        if (!response.ok) {
+          console.warn('Cached token is invalid, logging out...');
+          setGoogleUser(null);
+        }
+      } catch (error) {
+        console.error('Error validating token:', error);
+        setGoogleUser(null);
+      }
+    };
+
+    validateToken();
+  }, []); // Only run on mount
+
   const login = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
       try {
