@@ -1,11 +1,14 @@
+/// <reference types="@types/google.maps" />
 import React, { useState, useEffect } from 'react';
 import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow, useMap } from '@vis.gl/react-google-maps';
 import { MapPin, Maximize2, Minimize2, Star, ExternalLink } from 'lucide-react';
-import { TripRecommendation } from '../types';
+import { TripRecommendation, TripLayer } from '../types';
+import { AVAILABLE_KML_ICONS, KML_ICON_STYLES } from '../constants';
 
 interface MapViewProps {
   city: string;
   places: TripRecommendation[];
+  savedLayers?: TripLayer[];
   focusedPlace?: TripRecommendation | null;
   onMarkerClick?: (place: TripRecommendation) => void;
 }
@@ -74,12 +77,14 @@ const MapController: React.FC<{ city: string; focusedPlace?: TripRecommendation 
 export const MapView: React.FC<MapViewProps> = ({ 
   city, 
   places, 
+  savedLayers = [],
   focusedPlace,
   onMarkerClick 
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<TripRecommendation | null>(null);
   const [geocodedFocusedPlace, setGeocodedFocusedPlace] = useState<{ place: TripRecommendation; lat: number; lng: number } | null>(null);
+  const [geocodedSavedPlaces, setGeocodedSavedPlaces] = useState<Record<string, { lat: number; lng: number }>>({});
   
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -111,8 +116,38 @@ export const MapView: React.FC<MapViewProps> = ({
     }
   }, [focusedPlace, city]);
 
+  // Geocode saved places without coordinates
+  useEffect(() => {
+    const savedPlaces = savedLayers.flatMap(layer => layer.places);
+    const placesNeedingGeocoding = savedPlaces.filter(p => !p.lat || !p.lng);
+    
+    if (placesNeedingGeocoding.length === 0) return;
+
+    const geocoder = new google.maps.Geocoder();
+    
+    placesNeedingGeocoding.forEach(place => {
+      // Skip if already geocoded
+      if (geocodedSavedPlaces[place.title]) return;
+      
+      const searchQuery = `${place.title}, ${city}`;
+      geocoder.geocode({ address: searchQuery }, (results, status) => {
+        if (status === 'OK' && results && results[0]) {
+          const location = results[0].geometry.location;
+          setGeocodedSavedPlaces(prev => ({
+            ...prev,
+            [place.title]: { lat: location.lat(), lng: location.lng() }
+          }));
+        }
+      });
+    });
+  }, [savedLayers, city, geocodedSavedPlaces]);
+
   // Filter places that have coordinates
   const placesWithCoords = places.filter(p => p.lat && p.lng);
+  
+  // Flatten all saved places from layers
+  const savedPlaces = savedLayers.flatMap(layer => layer.places);
+  const savedPlacesWithCoords = savedPlaces.filter(p => p.lat && p.lng);
 
   if (!city) return null;
 
@@ -166,7 +201,7 @@ export const MapView: React.FC<MapViewProps> = ({
               {/* Render markers for all places with coordinates */}
               {placesWithCoords.map((place, index) => (
                 <AdvancedMarker
-                  key={index}
+                  key={`pending-${index}`}
                   position={{ lat: place.lat!, lng: place.lng! }}
                   onClick={() => {
                     setSelectedPlace(place);
@@ -181,6 +216,70 @@ export const MapView: React.FC<MapViewProps> = ({
                   />
                 </AdvancedMarker>
               ))}
+
+              {/* Render saved places with custom category icons */}
+              {savedPlacesWithCoords.map((place, index) => {
+                const iconStyle = place.customKmlIcon || KML_ICON_STYLES[place.category] || 'icon-camera';
+                const iconUrl = AVAILABLE_KML_ICONS.find(icon => icon.id === iconStyle)?.url || AVAILABLE_KML_ICONS[0].url;
+                
+                return (
+                  <AdvancedMarker
+                    key={`saved-${index}`}
+                    position={{ lat: place.lat!, lng: place.lng! }}
+                    onClick={() => {
+                      setSelectedPlace(place);
+                      onMarkerClick?.(place);
+                    }}
+                  >
+                    <img
+                      src={iconUrl}
+                      alt={place.category}
+                      style={{
+                        width: focusedPlace?.title === place.title ? '48px' : '32px',
+                        height: focusedPlace?.title === place.title ? '48px' : '32px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        filter: focusedPlace?.title === place.title ? 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))' : 'none'
+                      }}
+                    />
+                  </AdvancedMarker>
+                );
+              })}
+
+              {/* Render geocoded saved places (places without original coordinates) */}
+              {savedPlaces
+                .filter(p => !p.lat || !p.lng)
+                .map((place, index) => {
+                  const coords = geocodedSavedPlaces[place.title];
+                  if (!coords) return null;
+                  
+                  const iconStyle = place.customKmlIcon || KML_ICON_STYLES[place.category] || 'icon-camera';
+                  const iconUrl = AVAILABLE_KML_ICONS.find(icon => icon.id === iconStyle)?.url || AVAILABLE_KML_ICONS[0].url;
+                  
+                  return (
+                    <AdvancedMarker
+                      key={`geocoded-saved-${index}`}
+                      position={coords}
+                      onClick={() => {
+                        setSelectedPlace(place);
+                        onMarkerClick?.(place);
+                      }}
+                    >
+                      <img
+                        src={iconUrl}
+                        alt={place.category}
+                        style={{
+                          width: focusedPlace?.title === place.title ? '48px' : '32px',
+                          height: focusedPlace?.title === place.title ? '48px' : '32px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                          filter: focusedPlace?.title === place.title ? 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))' : 'none'
+                        }}
+                      />
+                    </AdvancedMarker>
+                  );
+                })
+              }
 
               {/* Render temporary marker for geocoded focused place without coordinates */}
               {geocodedFocusedPlace && (
@@ -205,7 +304,7 @@ export const MapView: React.FC<MapViewProps> = ({
                       ? { lat: selectedPlace.lat, lng: selectedPlace.lng }
                       : geocodedFocusedPlace?.place.title === selectedPlace.title && geocodedFocusedPlace
                       ? { lat: geocodedFocusedPlace.lat, lng: geocodedFocusedPlace.lng }
-                      : undefined
+                      : geocodedSavedPlaces[selectedPlace.title] || undefined
                   }
                   onCloseClick={() => setSelectedPlace(null)}
                 >

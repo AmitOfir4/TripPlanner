@@ -167,10 +167,11 @@ const App: React.FC = () => {
               onSearch={handleSearch}
             />
 
-            {currentCity && pendingSuggestions.length > 0 && (
+            {currentCity && (pendingSuggestions.length > 0 || savedLayers.length > 0) && (
               <MapView
                 city={currentCity}
                 places={pendingSuggestions}
+                savedLayers={savedLayers}
                 focusedPlace={focusedPlace}
               />
             )}
