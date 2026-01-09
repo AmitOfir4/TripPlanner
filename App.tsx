@@ -156,7 +156,7 @@ const App: React.FC = () => {
       <main className="app-main-content flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Discovery Area */}
         <div className="discovery-panel flex-1 overflow-y-auto p-6 lg:p-12">
-          <div className="discovery-content-wrapper max-w-4xl mx-auto space-y-12">
+          <div className="discovery-content-wrapper w-full space-y-12">
             <SearchForm
               currentCity={currentCity}
               query={query}

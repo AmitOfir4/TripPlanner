@@ -184,7 +184,7 @@ export const MapView: React.FC<MapViewProps> = ({
       </div>
 
       {/* Map Container */}
-      <div className={`map-wrapper relative ${isExpanded ? 'h-[calc(100%-4rem)]' : 'h-96'}`}>
+      <div className={`map-wrapper relative ${isExpanded ? 'h-[calc(100%-4rem)]' : 'h-[600px]'}`}>
         {apiKey ? (
           <APIProvider apiKey={apiKey}>
             <Map
