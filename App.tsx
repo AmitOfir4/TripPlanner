@@ -181,6 +181,7 @@ const App: React.FC = () => {
                     places={pendingSuggestions}
                     savedLayers={savedLayers}
                     focusedPlace={focusedPlace}
+                    onAddPlace={savePlace}
                   />
                 </div>
               )}
@@ -202,8 +203,8 @@ const App: React.FC = () => {
               )}
             </div>
 
-            {/* Saved Places - Below Map (only show after search) */}
-            {requestCount > 0 && (
+            {/* Saved Places - Below Map */}
+            {savedLayers.length > 0 && (
               <SavedPlacesSidebar
                 savedLayers={savedLayers}
                 googleUser={googleUser}

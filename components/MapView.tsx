@@ -26,6 +26,7 @@ interface MapViewProps {
   savedLayers?: TripLayer[];
   focusedPlace?: TripRecommendation | null;
   onMarkerClick?: (place: TripRecommendation) => void;
+  onAddPlace?: (place: TripRecommendation) => void;
 }
 
 // Component to handle geocoding and map centering
@@ -119,10 +120,12 @@ export const MapView: React.FC<MapViewProps> = ({
   places, 
   savedLayers = [],
   focusedPlace,
-  onMarkerClick 
+  onMarkerClick,
+  onAddPlace
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<TripRecommendation | null>(null);
+  const [clickedLocation, setClickedLocation] = useState<{ lat: number; lng: number; name?: string } | null>(null);
   const [geocodedFocusedPlace, setGeocodedFocusedPlace] = useState<{ place: TripRecommendation; lat: number; lng: number } | null>(null);
   const [geocodedSavedPlaces, setGeocodedSavedPlaces] = useState<Record<string, { lat: number; lng: number }>>({});
   const [searchQuery, setSearchQuery] = useState('');
@@ -339,6 +342,23 @@ export const MapView: React.FC<MapViewProps> = ({
               disableDefaultUI={false}
               keyboardShortcuts={false}
               className="w-full h-full"
+              onClick={(e) => {
+                // Handle map click to get place information
+                if (e.detail.latLng) {
+                  const lat = e.detail.latLng.lat;
+                  const lng = e.detail.latLng.lng;
+                  
+                  // Reverse geocode to get place name
+                  const geocoder = new google.maps.Geocoder();
+                  geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+                    if (status === 'OK' && results && results[0]) {
+                      const placeName = results[0].address_components[0]?.long_name || results[0].formatted_address;
+                      setClickedLocation({ lat, lng, name: placeName });
+                      setSelectedPlace(null); // Clear any existing selection
+                    }
+                  });
+                }
+              }}
             >
               <MapController city={city} focusedPlace={focusedPlace} places={places} />
               
@@ -440,6 +460,21 @@ export const MapView: React.FC<MapViewProps> = ({
                 </AdvancedMarker>
               )}
 
+              {/* Marker for clicked location on map */}
+              {clickedLocation && (
+                <AdvancedMarker
+                  position={{ lat: clickedLocation.lat, lng: clickedLocation.lng }}
+                  onClick={() => {}}
+                >
+                  <Pin
+                    background="#10b981"
+                    borderColor="#065f46"
+                    glyphColor="#ffffff"
+                    scale={1.2}
+                  />
+                </AdvancedMarker>
+              )}
+
               {/* Info Window for selected place */}
               {selectedPlace && (
                 <InfoWindow
@@ -474,6 +509,52 @@ export const MapView: React.FC<MapViewProps> = ({
                       target="_blank"
                       rel="noreferrer"
                       className="text-xs text-indigo-600 hover:text-indigo-700 font-bold flex items-center gap-1"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Open in Google Maps
+                    </a>
+                  </div>
+                </InfoWindow>
+              )}
+
+              {/* Info Window for clicked location with Add button */}
+              {clickedLocation && (
+                <InfoWindow
+                  position={{ lat: clickedLocation.lat, lng: clickedLocation.lng }}
+                  onCloseClick={() => setClickedLocation(null)}
+                >
+                  <div className="p-2 max-w-xs">
+                    <h4 className="font-bold text-sm text-slate-900 mb-1">
+                      {clickedLocation.name || 'Selected Location'}
+                    </h4>
+                    <p className="text-xs text-slate-600 mb-3">
+                      {clickedLocation.lat.toFixed(6)}, {clickedLocation.lng.toFixed(6)}
+                    </p>
+                    {onAddPlace && (
+                      <button
+                        onClick={() => {
+                          const newPlace: TripRecommendation = {
+                            title: clickedLocation.name || 'Custom Place',
+                            description: `Location at ${clickedLocation.lat.toFixed(4)}, ${clickedLocation.lng.toFixed(4)}`,
+                            category: 'Other',
+                            lat: clickedLocation.lat,
+                            lng: clickedLocation.lng,
+                            needsEnrichment: false
+                          };
+                          onAddPlace(newPlace);
+                          setClickedLocation(null);
+                        }}
+                        className="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-2"
+                      >
+                        <MapPin className="w-3 h-3" />
+                        Add to Trip
+                      </button>
+                    )}
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${clickedLocation.lat},${clickedLocation.lng}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs text-indigo-600 hover:text-indigo-700 font-bold flex items-center gap-1 justify-center mt-2"
                     >
                       <ExternalLink className="w-3 h-3" />
                       Open in Google Maps
