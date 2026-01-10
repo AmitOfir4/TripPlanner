@@ -3,7 +3,22 @@ import React, { useState, useEffect } from 'react';
 import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow, useMap } from '@vis.gl/react-google-maps';
 import { MapPin, Maximize2, Minimize2, Star, ExternalLink } from 'lucide-react';
 import { TripRecommendation, TripLayer } from '../types';
-import { AVAILABLE_KML_ICONS, KML_ICON_STYLES } from '../constants';
+import { AVAILABLE_KML_ICONS, KML_ICON_STYLES, CATEGORY_RULES } from '../constants';
+
+// Helper to get default icon for a category
+const getDefaultKmlIcon = (category: string): string => {
+  const normalized = category.toLowerCase();
+  
+  for (const [categoryName, keywords] of Object.entries(CATEGORY_RULES)) 
+  {
+    if (keywords.some(keyword => normalized.includes(keyword))) 
+    {
+      return KML_ICON_STYLES[categoryName] || 'icon-camera';
+    }
+  }
+  
+  return 'icon-camera';
+};
 
 interface MapViewProps {
   city: string;
@@ -98,6 +113,9 @@ export const MapView: React.FC<MapViewProps> = ({
       
       // If focused place doesn't have coordinates, geocode it
       if (!focusedPlace.lat || !focusedPlace.lng) {
+        // Check if Google Maps API is loaded
+        if (typeof google === 'undefined' || !google.maps) return;
+        
         const geocoder = new google.maps.Geocoder();
         const searchQuery = `${focusedPlace.title}, ${city}`;
         geocoder.geocode({ address: searchQuery }, (results, status) => {
@@ -118,29 +136,36 @@ export const MapView: React.FC<MapViewProps> = ({
 
   // Geocode saved places without coordinates
   useEffect(() => {
+    // Check if Google Maps API is fully loaded
+    if (!apiKey || typeof google === 'undefined' || !google.maps || !google.maps.Geocoder) return;
+    
     const savedPlaces = savedLayers.flatMap(layer => layer.places);
     const placesNeedingGeocoding = savedPlaces.filter(p => !p.lat || !p.lng);
     
     if (placesNeedingGeocoding.length === 0) return;
 
-    const geocoder = new google.maps.Geocoder();
+    try {
+      const geocoder = new google.maps.Geocoder();
     
-    placesNeedingGeocoding.forEach(place => {
-      // Skip if already geocoded
-      if (geocodedSavedPlaces[place.title]) return;
-      
-      const searchQuery = `${place.title}, ${city}`;
-      geocoder.geocode({ address: searchQuery }, (results, status) => {
-        if (status === 'OK' && results && results[0]) {
-          const location = results[0].geometry.location;
-          setGeocodedSavedPlaces(prev => ({
-            ...prev,
-            [place.title]: { lat: location.lat(), lng: location.lng() }
-          }));
-        }
+      placesNeedingGeocoding.forEach(place => {
+        // Skip if already geocoded
+        if (geocodedSavedPlaces[place.title]) return;
+        
+        const searchQuery = `${place.title}, ${city}`;
+        geocoder.geocode({ address: searchQuery }, (results, status) => {
+          if (status === 'OK' && results && results[0]) {
+            const location = results[0].geometry.location;
+            setGeocodedSavedPlaces(prev => ({
+              ...prev,
+              [place.title]: { lat: location.lat(), lng: location.lng() }
+            }));
+          }
+        });
       });
-    });
-  }, [savedLayers, city, geocodedSavedPlaces]);
+    } catch (error) {
+      console.error('Error initializing geocoder:', error);
+    }
+  }, [savedLayers, city, geocodedSavedPlaces, apiKey]);
 
   // Filter places that have coordinates
   const placesWithCoords = places.filter(p => p.lat && p.lng);
@@ -219,7 +244,7 @@ export const MapView: React.FC<MapViewProps> = ({
 
               {/* Render saved places with custom category icons */}
               {savedPlacesWithCoords.map((place, index) => {
-                const iconStyle = place.customKmlIcon || KML_ICON_STYLES[place.category] || 'icon-camera';
+                const iconStyle = place.customKmlIcon || getDefaultKmlIcon(place.category);
                 const iconUrl = AVAILABLE_KML_ICONS.find(icon => icon.id === iconStyle)?.url || AVAILABLE_KML_ICONS[0].url;
                 
                 return (
@@ -253,7 +278,7 @@ export const MapView: React.FC<MapViewProps> = ({
                   const coords = geocodedSavedPlaces[place.title];
                   if (!coords) return null;
                   
-                  const iconStyle = place.customKmlIcon || KML_ICON_STYLES[place.category] || 'icon-camera';
+                  const iconStyle = place.customKmlIcon || getDefaultKmlIcon(place.category);
                   const iconUrl = AVAILABLE_KML_ICONS.find(icon => icon.id === iconStyle)?.url || AVAILABLE_KML_ICONS[0].url;
                   
                   return (

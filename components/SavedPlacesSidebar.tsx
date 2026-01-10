@@ -30,7 +30,7 @@ export const SavedPlacesSidebar: React.FC<SavedPlacesSidebarProps> = ({
   const totalPlaces = savedLayers.reduce((acc, l) => acc + l.places.length, 0);
 
   return (
-    <aside className="lg:w-[440px] shrink-0 bg-white border-l border-slate-200 overflow-y-auto p-8 flex flex-col">
+    <section className="bg-white rounded-3xl border-2 border-slate-200 overflow-hidden shadow-lg p-8">
       <div className="flex items-center justify-between mb-10">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-slate-900 rounded-2xl flex items-center justify-center shadow-lg">
@@ -54,7 +54,7 @@ export const SavedPlacesSidebar: React.FC<SavedPlacesSidebarProps> = ({
         onUploadToDrive={onUploadToDrive}
       />
 
-      <div className="flex-1 space-y-12">
+      <div className="space-y-12">
         {savedLayers.length === 0 ? (
           <EmptyState />
         ) : (
@@ -67,7 +67,7 @@ export const SavedPlacesSidebar: React.FC<SavedPlacesSidebarProps> = ({
           ))
         )}
       </div>
-    </aside>
+    </section>
   );
 };
 

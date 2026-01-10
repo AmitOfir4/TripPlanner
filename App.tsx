@@ -158,10 +158,9 @@ const App: React.FC = () => {
         onReset={resetTrip}
       />
 
-      <main className="app-main-content flex-1 flex flex-col lg:flex-row overflow-hidden">
-        {/* Discovery Area */}
-        <div className="discovery-panel flex-1 overflow-y-auto p-6 lg:p-12">
-          <div className="discovery-content-wrapper w-full space-y-12">
+      <main className="app-main-content flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 overflow-y-auto p-6 lg:p-12">
+          <div className="w-full space-y-12">
             <SearchForm
               currentCity={currentCity}
               query={query}
@@ -172,40 +171,49 @@ const App: React.FC = () => {
               onSearch={handleSearch}
             />
 
-            {currentCity && (pendingSuggestions.length > 0 || savedLayers.length > 0) && (
-              <MapView
-                city={currentCity}
-                places={pendingSuggestions}
-                savedLayers={savedLayers}
-                focusedPlace={focusedPlace}
-              />
-            )}
+            {/* Map View with Recommended Places on the Right */}
+            <div className="flex flex-col lg:flex-row gap-6">
+              {/* Map Section */}
+              {currentCity && (pendingSuggestions.length > 0 || savedLayers.length > 0) && (
+                <div className="flex-1 lg:max-w-[60%]">
+                  <MapView
+                    city={currentCity}
+                    places={pendingSuggestions}
+                    savedLayers={savedLayers}
+                    focusedPlace={focusedPlace}
+                  />
+                </div>
+              )}
 
-            <div className="search-results-section space-y-8 pb-20">
-              <PlaceResults
-                loading={loading}
-                currentCity={currentCity}
-                suggestions={pendingSuggestions}
-                suggestionsEndRef={suggestionsEndRef}
-                onSavePlace={savePlace}
-                onDismissPlace={handleDismissPlace}
-                onIconChange={handleIconChange}
-                onViewOnMap={setFocusedPlace}
-              />
+              {/* Recommended Places - Right Side of Map */}
+              {pendingSuggestions.length > 0 && (
+                <div className="lg:w-[40%] shrink-0">
+                  <PlaceResults
+                    loading={loading}
+                    currentCity={currentCity}
+                    suggestions={pendingSuggestions}
+                    suggestionsEndRef={suggestionsEndRef}
+                    onSavePlace={savePlace}
+                    onDismissPlace={handleDismissPlace}
+                    onIconChange={handleIconChange}
+                    onViewOnMap={setFocusedPlace}
+                  />
+                </div>
+              )}
             </div>
+
+            {/* Saved Places - Below Map */}
+            <SavedPlacesSidebar
+              savedLayers={savedLayers}
+              googleUser={googleUser}
+              enriching={enriching}
+              onRemovePlace={handleRemovePlace}
+              onDownload={handleDownload}
+              onUploadToDrive={handleUploadToDrive}
+              onEnrichSelected={handleEnrichSelected}
+            />
           </div>
         </div>
-
-        {/* Itinerary Sidebar */}
-        <SavedPlacesSidebar
-          savedLayers={savedLayers}
-          googleUser={googleUser}
-          enriching={enriching}
-          onRemovePlace={handleRemovePlace}
-          onDownload={handleDownload}
-          onUploadToDrive={handleUploadToDrive}
-          onEnrichSelected={handleEnrichSelected}
-        />
       </main>
 
       {/* Import Modal */}
