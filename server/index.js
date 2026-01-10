@@ -188,7 +188,8 @@ IMPORTANT: Complete the FULL list of ${placeCount} items. Count to ${placeCount}
         const parts = cleaned.split('|').map(p => p.trim());
         
         if (parts.length >= 2) {
-          const title = parts[0];
+          // Remove markdown bold formatting (**) from title
+          const title = parts[0].replace(/\*\*/g, '');
           const category = parts[1] || 'Other';
           const description = parts[2] || `Explore ${title} in ${city}`;
           

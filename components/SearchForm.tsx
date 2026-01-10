@@ -19,15 +19,18 @@ interface PromptExample {
 }
 
 const PROMPT_EXAMPLES: PromptExample[] = [
-  { query: 'romantic cafes and hidden gardens', label: 'Romantic Spots', icon: '💕' },
-  { query: 'authentic local food and street markets', label: 'Food & Markets', icon: '🍜' },
-  { query: 'historic architecture and museums', label: 'Art & Culture', icon: '🎨' },
-  { query: 'rooftop bars and live music venues', label: 'Nightlife', icon: '🎷' },
-  { query: 'luxury shopping and spa experiences', label: 'Luxury & Wellness', icon: '✨' },
-  { query: 'outdoor activities and scenic viewpoints', label: 'Nature & Adventure', icon: '🏞️' },
-  { query: 'family-friendly attractions and parks', label: 'Family Fun', icon: '🎡' },
-  { query: 'hidden gems and local favorites', label: 'Off the Beaten Path', icon: '🔍' },
-  { query: 'main attractions and must-see landmarks', label: 'Main Attractions', icon: '🌟' },
+  { query: 'highly-rated restaurants with authentic local cuisine and traditional dishes', label: 'Local Restaurants', icon: '🍜' },
+  { query: 'top-rated famous landmarks, historical sites, and must-see tourist attractions', label: 'Main Attractions', icon: '🌟' },
+  { query: 'popular nightlife spots including rooftop bars, cocktail lounges, and live music venues', label: 'Nightlife', icon: '🎷' },
+  { query: 'luxury shopping districts, high-end boutiques, local markets, and specialty stores', label: 'Shopping', icon: '✨' },
+  { query: 'premium spa experiences, wellness centers, luxury hotels, and upscale dining', label: 'Luxury & Wellness', icon: '💎' },
+  { query: 'outdoor activities, scenic viewpoints, nature parks, and adventure experiences', label: 'Nature & Adventure', icon: '🏞️' },
+  { query: 'highly-rated hotels, boutique accommodations, luxury resorts, and best-reviewed places to stay', label: 'Hotels & Lodging', icon: '🏨' },
+  { query: 'family-friendly attractions, theme parks, playgrounds, and kid-friendly restaurants', label: 'Family Activities', icon: '🎡' },
+  { query: 'hidden gems, off-the-beaten-path locations, local favorites, and secret spots', label: 'Hidden Gems', icon: '🔍' },
+  { query: 'romantic restaurants, intimate cafes, sunset viewpoints, and couples activities', label: 'Romantic Spots', icon: '💕' },
+  { query: 'street food markets, food halls, local eateries, and authentic culinary experiences', label: 'Street Food', icon: '🌮' },
+  { query: 'Instagram-worthy photo spots, scenic viewpoints, and aesthetic locations', label: 'Photo Spots', icon: '📸' },
 ];
 
 export const SearchForm: React.FC<SearchFormProps> = ({
