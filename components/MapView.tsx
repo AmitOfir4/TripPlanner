@@ -1,7 +1,7 @@
 /// <reference types="@types/google.maps" />
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow, useMap } from '@vis.gl/react-google-maps';
-import { MapPin, Maximize2, Minimize2, Star, ExternalLink } from 'lucide-react';
+import { MapPin, Maximize2, Minimize2, Star, ExternalLink, Search } from 'lucide-react';
 import { TripRecommendation, TripLayer } from '../types';
 import { AVAILABLE_KML_ICONS, KML_ICON_STYLES, CATEGORY_RULES } from '../constants';
 
@@ -29,10 +29,16 @@ interface MapViewProps {
 }
 
 // Component to handle geocoding and map centering
-const MapController: React.FC<{ city: string; focusedPlace?: TripRecommendation | null; places: TripRecommendation[] }> = ({ 
+const MapController: React.FC<{ 
+  city: string; 
+  focusedPlace?: TripRecommendation | null; 
+  places: TripRecommendation[];
+  selectedPlace?: TripRecommendation | null;
+}> = ({ 
   city, 
   focusedPlace, 
-  places 
+  places,
+  selectedPlace 
 }) => {
   const map = useMap();
   const [geocodedCenter, setGeocodedCenter] = useState<{ lat: number; lng: number } | null>(null);
@@ -41,7 +47,26 @@ const MapController: React.FC<{ city: string; focusedPlace?: TripRecommendation 
   useEffect(() => {
     if (!map || !city) return;
 
-    // If we have a focused place, try to center on it
+    // Priority 1: If we have a selected place from search, center on it
+    if (selectedPlace) {
+      if (selectedPlace.lat && selectedPlace.lng) {
+        map.panTo({ lat: selectedPlace.lat, lng: selectedPlace.lng });
+        map.setZoom(15);
+      } else {
+        const geocoder = new google.maps.Geocoder();
+        const searchQuery = `${selectedPlace.title}, ${city}`;
+        geocoder.geocode({ address: searchQuery }, (results, status) => {
+          if (status === 'OK' && results && results[0]) {
+            const location = results[0].geometry.location;
+            map.panTo({ lat: location.lat(), lng: location.lng() });
+            map.setZoom(15);
+          }
+        });
+      }
+      return;
+    }
+
+    // Priority 2: If we have a focused place, try to center on it
     if (focusedPlace) {
       if (focusedPlace.lat && focusedPlace.lng) {
         // Has coordinates - center directly
@@ -84,7 +109,7 @@ const MapController: React.FC<{ city: string; focusedPlace?: TripRecommendation 
         }
       });
     }
-  }, [map, city, focusedPlace, places, geocodedCenter, lastGeocodedCity]);
+  }, [map, city, focusedPlace, selectedPlace, places, geocodedCenter, lastGeocodedCity]);
 
   return null;
 };
@@ -100,11 +125,68 @@ export const MapView: React.FC<MapViewProps> = ({
   const [selectedPlace, setSelectedPlace] = useState<TripRecommendation | null>(null);
   const [geocodedFocusedPlace, setGeocodedFocusedPlace] = useState<{ place: TripRecommendation; lat: number; lng: number } | null>(null);
   const [geocodedSavedPlaces, setGeocodedSavedPlaces] = useState<Record<string, { lat: number; lng: number }>>({});
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<google.maps.GeocoderResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
   // Default center (will be updated by MapController)
   const defaultCenter = { lat: 25.2048, lng: 55.2708 }; // Dubai as fallback
+
+  // Search Google Maps for places
+  useEffect(() => {
+    if (!searchQuery.trim() || typeof google === 'undefined' || !google.maps) {
+      setSearchResults([]);
+      return;
+    }
+
+    // Debounce search
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    searchTimeoutRef.current = setTimeout(() => {
+      setIsSearching(true);
+      const geocoder = new google.maps.Geocoder();
+      
+      geocoder.geocode({ 
+        address: searchQuery,
+        region: city ? city.toLowerCase() : undefined
+      }, (results, status) => {
+        setIsSearching(false);
+        if (status === 'OK' && results) {
+          setSearchResults(results.slice(0, 5)); // Limit to 5 results
+        } else {
+          setSearchResults([]);
+        }
+      });
+    }, 500); // Wait 500ms after user stops typing
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery, city]);
+
+  // Handle selecting a search result from Google Maps
+  const handleSelectSearchResult = (result: google.maps.GeocoderResult) => {
+    const location = result.geometry.location;
+    const newPlace: TripRecommendation = {
+      title: result.formatted_address || result.address_components[0]?.long_name || 'Unknown Place',
+      description: result.formatted_address || '',
+      category: 'Other',
+      lat: location.lat(),
+      lng: location.lng(),
+      needsEnrichment: false
+    };
+    
+    setSelectedPlace(newPlace);
+    setSearchResults([]);
+    setSearchQuery('');
+  };
 
   // Auto-select focused place to show info window
   useEffect(() => {
@@ -195,6 +277,43 @@ export const MapView: React.FC<MapViewProps> = ({
             </p>
           </div>
         </div>
+
+        {/* Search Bar */}
+        <div className="flex items-center gap-3 flex-1 max-w-md mx-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search any place on Google Maps..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => setSelectedPlace(null)}
+              className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+            />
+            {isSearching && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl p-4 z-50 border border-slate-200">
+                <div className="text-sm text-slate-500">Searching...</div>
+              </div>
+            )}
+            {!isSearching && searchResults.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl max-h-60 overflow-y-auto z-50 border border-slate-200">
+                {searchResults.map((result, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handleSelectSearchResult(result)}
+                    className="w-full px-4 py-3 text-left hover:bg-indigo-50 transition-colors border-b border-slate-100 last:border-b-0"
+                  >
+                    <div className="font-bold text-sm text-slate-900">
+                      {result.address_components[0]?.long_name || result.formatted_address}
+                    </div>
+                    <div className="text-xs text-slate-500 line-clamp-1">{result.formatted_address}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
         <button
           onClick={() => setIsExpanded(!isExpanded)}
           className="p-2 hover:bg-white rounded-xl transition-colors"
@@ -209,7 +328,7 @@ export const MapView: React.FC<MapViewProps> = ({
       </div>
 
       {/* Map Container */}
-      <div className={`map-wrapper relative ${isExpanded ? 'h-[calc(100%-4rem)]' : 'h-[600px]'}`}>
+      <div className={`map-wrapper relative ${isExpanded ? 'h-[calc(100%-4rem)]' : 'h-[850px]'}`}>
         {apiKey ? (
           <APIProvider apiKey={apiKey}>
             <Map

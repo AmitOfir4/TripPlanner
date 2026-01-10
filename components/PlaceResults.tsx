@@ -199,7 +199,7 @@ export const PlaceResults: React.FC<PlaceResultsProps> = ({
 
               {/* Category Content */}
               {isExpanded && (
-                <div className="max-h-[600px] overflow-y-auto px-6 pb-6">
+                <div className="max-h-[540px] overflow-y-auto px-6 pb-6">
                   <div className="grid grid-cols-1 gap-6 animate-in fade-in slide-in-from-top-4 duration-300">
                     {places.map((place, idx) => (
                       <PlaceCard

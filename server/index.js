@@ -46,20 +46,112 @@ app.post('/api/search', async (req, res) => {
       ? `\nSkip: ${excludeTitles.join(', ')}.` 
       : '';
     
-    // Detect query type
+    // Detect query type and determine optimal number of places
+    // Based on search suggestion patterns
     const isTripPlanning = /\b(trip|itinerary|plan|visit|days?|weekend)\b/i.test(query);
+    const isSpecificPlace = /^(the\s+)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*$/.test(query.trim()) || 
+                           query.split(' ').length <= 3 && /^[A-Z]/.test(query);
     
-    // Determine number of places based on whether it's an additional search
-    const placeCount = isAdditional ? 20 : 60;
+    // Food & Markets - more results for dining searches
+    const isFoodSearch = /\b(food|restaurant|dining|cafe|cafes|market|street food|authentic|culinary|cuisine)\b/i.test(query);
     
-    console.log(`[Quick Search] City: ${city}, Query: "${query}", Type: ${isTripPlanning ? 'Trip Planning' : 'Specific'}, Additional: ${isAdditional}, Count: ${placeCount}`);
+    // Nightlife - bars, clubs, entertainment
+    const isNightlife = /\b(bar|bars|club|nightlife|pub|rooftop|live music|venue|entertainment)\b/i.test(query);
+    
+    // Art & Culture - museums, galleries, architecture
+    const isCulture = /\b(museum|gallery|art|culture|historic|architecture|cultural|heritage)\b/i.test(query);
+    
+    // Nature & Adventure - outdoor activities
+    const isNature = /\b(outdoor|nature|adventure|scenic|viewpoint|hike|hiking|park|garden|landscape)\b/i.test(query);
+    
+    // Luxury & Wellness - shopping, spa, upscale
+    const isLuxury = /\b(luxury|shopping|spa|wellness|upscale|premium|boutique|designer)\b/i.test(query);
+    
+    // Romantic - romantic spots, couples
+    const isRomantic = /\b(romantic|romance|couple|date|intimate|cozy)\b/i.test(query);
+    
+    // Family - family-friendly
+    const isFamily = /\b(family|kid|children|child-friendly|playground|family-friendly)\b/i.test(query);
+    
+    // Hidden Gems & Local Favorites
+    const isHiddenGems = /\b(hidden gem|local favorite|off the beaten|secret|undiscovered|lesser-known)\b/i.test(query);
+    
+    // Main Attractions
+    const isMainAttractions = /\b(main attraction|must-see|landmark|famous|iconic|popular|top rated|best)\b/i.test(query);
+    
+    // General category search
+    const isCategorySearch = /\b(hotels?|accommodations?|beaches?)\b/i.test(query);
+    
+    // General exploration
+    const isGeneralExploration = /\b(explore|discover|find|show me)\b/i.test(query);
+    
+    // Dynamic place count based on query intent
+    let placeCount;
+    if (isSpecificPlace) {
+      placeCount = 1; // Searching for a specific place by name
+    } else if (isFoodSearch) {
+      placeCount = isAdditional ? 20 : 40; // Food searches need variety
+    } else if (isNightlife) {
+      placeCount = isAdditional ? 15 : 30; // Nightlife - bars, clubs, venues
+    } else if (isCulture) {
+      placeCount = isAdditional ? 15 : 25; // Museums, galleries, historic sites
+    } else if (isNature) {
+      placeCount = isAdditional ? 15 : 30; // Outdoor activities, parks, viewpoints
+    } else if (isLuxury) {
+      placeCount = isAdditional ? 15 : 30; // Shopping, spa, luxury experiences
+    } else if (isRomantic) {
+      placeCount = isAdditional ? 15 : 25; // Romantic spots - cafes, gardens
+    } else if (isFamily) {
+      placeCount = isAdditional ? 15 : 30; // Family-friendly attractions
+    } else if (isHiddenGems) {
+      placeCount = isAdditional ? 20 : 35; // Hidden gems need more options
+    } else if (isMainAttractions) {
+      placeCount = isAdditional ? 20 : 40; // Main attractions - comprehensive list
+    } else if (isTripPlanning) {
+      placeCount = isAdditional ? 30 : 60; // Trip planning needs comprehensive list
+    } else if (isCategorySearch) {
+      placeCount = isAdditional ? 15 : 30; // Hotels, beaches, etc.
+    } else if (isGeneralExploration) {
+      placeCount = isAdditional ? 20 : 40; // General exploration gets good variety
+    } else {
+      placeCount = isAdditional ? 15 : 25; // Default for specific queries
+    }
+    
+    const queryType = isSpecificPlace ? 'Specific Place' : 
+                     isFoodSearch ? 'Food & Markets' :
+                     isNightlife ? 'Nightlife' :
+                     isCulture ? 'Art & Culture' :
+                     isNature ? 'Nature & Adventure' :
+                     isLuxury ? 'Luxury & Wellness' :
+                     isRomantic ? 'Romantic Spots' :
+                     isFamily ? 'Family Fun' :
+                     isHiddenGems ? 'Hidden Gems' :
+                     isMainAttractions ? 'Main Attractions' :
+                     isTripPlanning ? 'Trip Planning' : 
+                     isCategorySearch ? 'Category' :
+                     isGeneralExploration ? 'Exploration' : 'Custom';
+    
+    console.log(`[Quick Search] City: ${city}, Query: "${query}", Type: ${queryType}, Additional: ${isAdditional}, Count: ${placeCount}`);
     
     // Stronger prompt with numbered format and descriptions
     const categoryBreakdown = isTripPlanning && !isAdditional
       ? '\n- 15 top attractions/landmarks\n- 15 restaurants (various cuisines)\n- 10 hotels (different price ranges)\n- 10 shopping destinations\n- 10 entertainment/activities'
       : '';
     
-    const prompt = `List ${placeCount} places in ${city} for: "${query}"
+    // Customize prompt based on query type
+    let prompt;
+    if (isSpecificPlace) {
+      prompt = `Find the exact place in ${city} matching: "${query}"
+
+FORMAT:
+1. Exact Place Name | Category | Short description (5-10 words)
+
+Example:
+1. Eiffel Tower | Landmark | Iconic iron lattice tower in Paris
+
+IMPORTANT: Return ONLY the specific place that matches "${query}". Be precise.`;
+    } else {
+      prompt = `List ${placeCount} places in ${city} for: "${query}"
 ${excludeText}
 ${categoryBreakdown}
 
@@ -73,6 +165,7 @@ Example:
 2. Dubai Mall | Shopping | Massive mall with aquarium and ice rink
 
 IMPORTANT: Complete the FULL list of ${placeCount} items. Count to ${placeCount}.`;
+    }
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
