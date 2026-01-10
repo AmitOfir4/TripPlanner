@@ -63,7 +63,7 @@ export const SearchForm: React.FC<SearchFormProps> = ({
             <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-indigo-600 transition-colors" />
             <input 
               type="text" 
-              placeholder="e.g. Amsterdam"
+              placeholder="Enter a city name"
               className="w-full pl-12 py-4 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-600 transition-all outline-none font-bold text-slate-800 shadow-sm"
               value={currentCity}
               onChange={(e) => onCityChange(e.target.value)}

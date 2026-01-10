@@ -202,16 +202,18 @@ const App: React.FC = () => {
               )}
             </div>
 
-            {/* Saved Places - Below Map */}
-            <SavedPlacesSidebar
-              savedLayers={savedLayers}
-              googleUser={googleUser}
-              enriching={enriching}
-              onRemovePlace={handleRemovePlace}
-              onDownload={handleDownload}
-              onUploadToDrive={handleUploadToDrive}
-              onEnrichSelected={handleEnrichSelected}
-            />
+            {/* Saved Places - Below Map (only show after search) */}
+            {requestCount > 0 && (
+              <SavedPlacesSidebar
+                savedLayers={savedLayers}
+                googleUser={googleUser}
+                enriching={enriching}
+                onRemovePlace={handleRemovePlace}
+                onDownload={handleDownload}
+                onUploadToDrive={handleUploadToDrive}
+                onEnrichSelected={handleEnrichSelected}
+              />
+            )}
           </div>
         </div>
       </main>

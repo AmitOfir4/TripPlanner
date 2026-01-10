@@ -4,7 +4,7 @@ export const TRANSLATIONS = {
   savedMap: "Trip Summary",
   cityPrompt: "Destination City",
   queryPrompt: "What are you looking for?",
-  queryPlaceholder: "e.g. Hidden gems, best pizza, local art...",
+  queryPlaceholder: "What you'd like to discover",
   findPlaces: "Discover Spots",
   loadMore: "Find More",
   searching: "Searching the map...",
