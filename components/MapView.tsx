@@ -1,9 +1,10 @@
 /// <reference types="@types/google.maps" />
 import React, { useState, useEffect, useRef } from 'react';
 import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow, useMap } from '@vis.gl/react-google-maps';
-import { MapPin, Maximize2, Minimize2, Star, ExternalLink, Search } from 'lucide-react';
+import { MapPin, Maximize2, Minimize2, Star, ExternalLink, Search, Edit2, Check, X } from 'lucide-react';
 import { TripRecommendation, TripLayer } from '../types';
 import { AVAILABLE_KML_ICONS, KML_ICON_STYLES, CATEGORY_RULES } from '../constants';
+import { KmlIconSelector } from './KmlIconSelector';
 
 // Helper to get default icon for a category
 const getDefaultKmlIcon = (category: string): string => {
@@ -126,6 +127,9 @@ export const MapView: React.FC<MapViewProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<TripRecommendation | null>(null);
   const [clickedLocation, setClickedLocation] = useState<{ lat: number; lng: number; name?: string } | null>(null);
+  const [customPlaceName, setCustomPlaceName] = useState('');
+  const [customPlaceIcon, setCustomPlaceIcon] = useState('icon-camera');
+  const [isEditingName, setIsEditingName] = useState(false);
   const [geocodedFocusedPlace, setGeocodedFocusedPlace] = useState<{ place: TripRecommendation; lat: number; lng: number } | null>(null);
   const [geocodedSavedPlaces, setGeocodedSavedPlaces] = useState<Record<string, { lat: number; lng: number }>>({});
   const [searchQuery, setSearchQuery] = useState('');
@@ -354,6 +358,9 @@ export const MapView: React.FC<MapViewProps> = ({
                     if (status === 'OK' && results && results[0]) {
                       const placeName = results[0].address_components[0]?.long_name || results[0].formatted_address;
                       setClickedLocation({ lat, lng, name: placeName });
+                      setCustomPlaceName(placeName);
+                      setCustomPlaceIcon('icon-camera');
+                      setIsEditingName(false);
                       setSelectedPlace(null); // Clear any existing selection
                     }
                   });
@@ -521,28 +528,83 @@ export const MapView: React.FC<MapViewProps> = ({
               {clickedLocation && (
                 <InfoWindow
                   position={{ lat: clickedLocation.lat, lng: clickedLocation.lng }}
-                  onCloseClick={() => setClickedLocation(null)}
+                  onCloseClick={() => {
+                    setClickedLocation(null);
+                    setIsEditingName(false);
+                  }}
                 >
-                  <div className="p-2 max-w-xs">
-                    <h4 className="font-bold text-sm text-slate-900 mb-1">
-                      {clickedLocation.name || 'Selected Location'}
-                    </h4>
+                  <div className="p-3 max-w-sm">
+                    {/* Editable Place Name */}
+                    <div className="mb-3">
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                        Place Name
+                      </label>
+                      <div className="flex items-center gap-2">
+                        {isEditingName ? (
+                          <>
+                            <input
+                              type="text"
+                              value={customPlaceName}
+                              onChange={(e) => setCustomPlaceName(e.target.value)}
+                              className="flex-1 px-2 py-1 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              autoFocus
+                            />
+                            <button
+                              onClick={() => setIsEditingName(false)}
+                              className="p-1 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                            >
+                              <Check className="w-3 h-3" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <h4 className="flex-1 font-bold text-sm text-slate-900">
+                              {customPlaceName || 'Selected Location'}
+                            </h4>
+                            <button
+                              onClick={() => setIsEditingName(true)}
+                              className="p-1 text-slate-600 hover:bg-slate-100 rounded-lg"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
                     <p className="text-xs text-slate-600 mb-3">
                       {clickedLocation.lat.toFixed(6)}, {clickedLocation.lng.toFixed(6)}
                     </p>
+
+                    {/* Icon Selector */}
+                    {onAddPlace && (
+                      <div className="mb-3">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                          Select Icon
+                        </label>
+                        <KmlIconSelector
+                          currentIconId={customPlaceIcon}
+                          onIconChange={setCustomPlaceIcon}
+                        />
+                      </div>
+                    )}
+
+                    {/* Add to Trip Button */}
                     {onAddPlace && (
                       <button
                         onClick={() => {
                           const newPlace: TripRecommendation = {
-                            title: clickedLocation.name || 'Custom Place',
-                            description: `Location at ${clickedLocation.lat.toFixed(4)}, ${clickedLocation.lng.toFixed(4)}`,
+                            title: customPlaceName || 'Custom Place',
+                            description: `Custom location at ${clickedLocation.lat.toFixed(4)}, ${clickedLocation.lng.toFixed(4)}`,
                             category: 'Other',
                             lat: clickedLocation.lat,
                             lng: clickedLocation.lng,
-                            needsEnrichment: false
+                            needsEnrichment: false,
+                            customKmlIcon: customPlaceIcon
                           };
                           onAddPlace(newPlace);
                           setClickedLocation(null);
+                          setIsEditingName(false);
                         }}
                         className="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-2"
                       >
@@ -550,6 +612,7 @@ export const MapView: React.FC<MapViewProps> = ({
                         Add to Trip
                       </button>
                     )}
+
                     <a
                       href={`https://www.google.com/maps/search/?api=1&query=${clickedLocation.lat},${clickedLocation.lng}`}
                       target="_blank"
