@@ -30,7 +30,8 @@ interface UseTripPlannerReturn {
 }
 
 export const useTripPlanner = (
-  userLocation?: { latitude: number; longitude: number }
+  userLocation?: { latitude: number; longitude: number },
+  apiKey?: string
 ): UseTripPlannerReturn => {
   const [currentCity, setCurrentCityState] = useState(() => {
     return localStorage.getItem(STORAGE_KEYS.CITY) || '';
@@ -137,6 +138,7 @@ export const useTripPlanner = (
       const { suggestions, quickSearch } = await fetchSuggestions(
         currentCity, 
         query,
+        apiKey || '',
         isAdditionalSearch,
         existingTitles
       );
@@ -154,6 +156,7 @@ export const useTripPlanner = (
     } catch (err) {
       console.error('Error fetching suggestions:', err);
       setLoading(false);
+      throw err; // Re-throw so App.tsx can catch it
     }
   };
 
@@ -176,6 +179,7 @@ export const useTripPlanner = (
       const { enrichedPlaces, total } = await enrichPlaces(
         placesToEnrich,
         currentCity,
+        apiKey || '',
         userLocation
       );
       

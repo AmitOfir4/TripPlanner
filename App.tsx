@@ -6,6 +6,7 @@ import { SavedPlacesSidebar } from './components/SavedPlacesSidebar';
 import { ImportModal } from './components/ImportModal';
 import { MapView } from './components/MapView';
 import { useGoogleAuth } from './hooks/useGoogleAuth';
+import { useApiKey } from './hooks/useApiKey';
 import { useTripPlanner } from './hooks/useTripPlanner';
 import { useMapImport } from './hooks/useMapImport';
 import { useUserLocation } from './hooks/useUserLocation';
@@ -16,8 +17,10 @@ import { TripRecommendation } from './types';
 const App: React.FC = () => {
   const userLocation = useUserLocation();
   const { googleUser, login, logout } = useGoogleAuth();
+  const { apiKey, setApiKey, clearApiKey, hasApiKey } = useApiKey();
   const suggestionsEndRef = useRef<HTMLDivElement>(null);
   const [focusedPlace, setFocusedPlace] = useState<TripRecommendation | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string>('');
 
   const {
     currentCity,
@@ -31,11 +34,25 @@ const App: React.FC = () => {
     savedLayers,
     setSavedLayers,
     requestCount,
-    handleSearch,
+    handleSearch: handleSearchBase,
     handleEnrichSelected,
     savePlace,
     resetTrip
-  } = useTripPlanner(userLocation);
+  } = useTripPlanner(userLocation, apiKey);
+
+  // Wrap handleSearch to catch API key errors
+  const handleSearch = async (e: React.FormEvent | null) => {
+    setErrorMessage(''); // Clear previous errors
+    try {
+      await handleSearchBase(e);
+    } catch (error: any) {
+      if (error.message?.includes('API key')) {
+        setErrorMessage(error.message);
+      } else {
+        console.error('Search error:', error);
+      }
+    }
+  };
 
   const {
     showImportModal,
@@ -153,14 +170,49 @@ const App: React.FC = () => {
     <div className="app-container min-h-screen bg-slate-50 flex flex-col antialiased">
       <Header
         googleUser={googleUser}
+        apiKey={apiKey}
+        hasApiKey={hasApiKey}
         onImportClick={handleImportFromMyMaps}
         onLogout={logout}
         onReset={resetTrip}
+        onApiKeyChange={setApiKey}
+        onApiKeyClear={clearApiKey}
       />
 
       <main className="app-main-content flex-1 flex flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto p-6 lg:p-12">
           <div className="w-full space-y-12">
+            {/* API Key Error Banner */}
+            {errorMessage && (
+              <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-6 shadow-lg">
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0 w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
+                    <span className="text-2xl">🔑</span>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold text-amber-900 mb-2">API Key Required</h3>
+                    <p className="text-sm text-amber-800 mb-3">{errorMessage}</p>
+                    <button
+                      onClick={() => {
+                        setErrorMessage('');
+                        // Trigger the API key modal by simulating a click
+                        document.querySelector('[title="Add your Gemini API Key"]')?.dispatchEvent(new Event('click', { bubbles: true }));
+                      }}
+                      className="px-4 py-2 bg-amber-600 text-white rounded-xl text-sm font-bold hover:bg-amber-700 transition-colors"
+                    >
+                      Add API Key Now
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setErrorMessage('')}
+                    className="text-amber-400 hover:text-amber-600 transition-colors"
+                  >
+                    <span className="text-2xl">×</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             <SearchForm
               currentCity={currentCity}
               query={query}

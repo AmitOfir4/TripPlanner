@@ -12,6 +12,7 @@ const ENRICH_ENDPOINT = import.meta.env.VITE_ENRICH_ENDPOINT ||
 export const fetchSuggestions = async (
   city: string,
   query: string,
+  apiKey: string,
   isAdditional: boolean = false,
   excludeTitles: string[] = []
 ): Promise<{ suggestions: TripRecommendation[], quickSearch: boolean }> => {
@@ -24,6 +25,7 @@ export const fetchSuggestions = async (
       body: JSON.stringify({
         city,
         query,
+        apiKey,
         isAdditional,
         excludeTitles
       })
@@ -50,6 +52,7 @@ export const fetchSuggestions = async (
 export const enrichPlaces = async (
   places: TripRecommendation[],
   city: string,
+  apiKey: string,
   latLng?: { latitude: number, longitude: number }
 ): Promise<{ enrichedPlaces: TripRecommendation[], total: number }> => {
   try {
@@ -61,6 +64,7 @@ export const enrichPlaces = async (
       body: JSON.stringify({
         places,
         city,
+        apiKey,
         latLng
       })
     });

@@ -18,7 +18,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { city, query } = req.body;
+    const { city, query, apiKey } = req.body;
 
     // Validation
     if (!city || !query) {
@@ -28,18 +28,21 @@ export default async function handler(req, res) {
       });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      console.error('GEMINI_API_KEY not found in environment variables');
-      return res.status(500).json({
-        error: 'Server configuration error',
-        message: 'API key not configured'
+    // Check for API key from user or fallback to environment variable
+    const geminiApiKey = apiKey || process.env.GEMINI_API_KEY;
+    
+    if (!geminiApiKey) {
+      console.error('No API key provided');
+      return res.status(400).json({
+        error: 'API key required',
+        message: 'Please provide your Gemini API key. Get one free at https://aistudio.google.com/apikey'
       });
     }
 
-    console.log(`[Quick Search] ${city} - "${query}"`);
+    console.log(`[Quick Search] ${city} - "${query}"${apiKey ? ' (user key)' : ' (env key)'}`);
 
-    // Initialize Gemini AI
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    // Initialize Gemini AI with provided key
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
     
     // Simple, fast prompt - just get place names and categories
     const prompt = `List 60 places in ${city} for: "${query}"

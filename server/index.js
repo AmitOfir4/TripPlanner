@@ -22,7 +22,7 @@ app.get('/api/health', (req, res) => {
 // Quick search endpoint - just get place names
 app.post('/api/search', async (req, res) => {
   try {
-    const { city, query, isAdditional = false, excludeTitles = [] } = req.body;
+    const { city, query, apiKey, isAdditional = false, excludeTitles = [] } = req.body;
 
     if (!city || !query) {
       return res.status(400).json({
@@ -31,16 +31,21 @@ app.post('/api/search', async (req, res) => {
       });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      console.error('GEMINI_API_KEY not found in environment variables');
-      return res.status(500).json({
-        error: 'Server configuration error',
-        message: 'API key not configured'
+    // Check for API key from user or fallback to environment variable
+    const geminiApiKey = apiKey || process.env.GEMINI_API_KEY;
+    
+    if (!geminiApiKey) {
+      console.error('No API key provided');
+      return res.status(400).json({
+        error: 'API key required',
+        message: 'Please provide your Gemini API key. Get one free at https://aistudio.google.com/apikey'
       });
     }
 
-    // Initialize Gemini AI
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    console.log(`[Quick Search] ${city} - "${query}"${apiKey ? ' (user key)' : ' (env key)'}`);
+
+    // Initialize Gemini AI with provided key
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
     
     const excludeText = excludeTitles.length > 0 
       ? `\nSkip: ${excludeTitles.join(', ')}.` 
@@ -225,7 +230,7 @@ IMPORTANT: Complete the FULL list of ${placeCount} items. Count to ${placeCount}
 // PHASE 2: Enrich selected places with full details (coordinates, ratings, descriptions)
 app.post('/api/enrich', async (req, res) => {
   try {
-    const { places, city, latLng } = req.body;
+    const { places, city, apiKey, latLng } = req.body;
 
     // Validation
     if (!places || !Array.isArray(places) || places.length === 0) {
@@ -235,18 +240,21 @@ app.post('/api/enrich', async (req, res) => {
       });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      console.error('GEMINI_API_KEY not found in environment variables');
-      return res.status(500).json({
-        error: 'Server configuration error',
-        message: 'API key not configured'
+    // Check for API key from user or fallback to environment variable
+    const geminiApiKey = apiKey || process.env.GEMINI_API_KEY;
+    
+    if (!geminiApiKey) {
+      console.error('No API key provided');
+      return res.status(400).json({
+        error: 'API key required',
+        message: 'Please provide your Gemini API key. Get one free at https://aistudio.google.com/apikey'
       });
     }
 
-    console.log(`[Enrichment] Processing ${places.length} places for ${city}`);
+    console.log(`[Enrichment] Processing ${places.length} places for ${city}${apiKey ? ' (user key)' : ' (env key)'}`);
 
-    // Initialize Gemini AI
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    // Initialize Gemini AI with provided key
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
     
     // Create enrichment prompt
     const placeNames = places.map(p => p.title).join('\n- ');
