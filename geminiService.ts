@@ -1,124 +1,167 @@
 
-import { GoogleGenAI } from "@google/genai";
-import { TripRecommendation, Language, GroundingChunk } from "./types";
+import { TripRecommendation, GroundingChunk } from "./types";
 
+// Backend API endpoints
+const API_ENDPOINT = import.meta.env.VITE_API_ENDPOINT || 
+                     (import.meta.env.DEV ? 'http://localhost:3001/api/search' : '/api/search');
+
+const ENRICH_ENDPOINT = import.meta.env.VITE_ENRICH_ENDPOINT || 
+                        (import.meta.env.DEV ? 'http://localhost:3001/api/enrich' : '/api/enrich');
+
+// PHASE 1: Quick search - just get place names and categories (fast)
 export const fetchSuggestions = async (
   city: string,
   query: string,
-  language: Language,
+  apiKey: string,
+  isAdditional: boolean = false,
+  excludeTitles: string[] = []
+): Promise<{ suggestions: TripRecommendation[], quickSearch: boolean }> => {
+  try {
+    const response = await fetch(API_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        city,
+        query,
+        apiKey,
+        isAdditional,
+        excludeTitles
+      })
+    });
+
+    if (!response.ok) 
+    {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return {
+      suggestions: data.suggestions || [],
+      quickSearch: data.quickSearch || false
+    };
+  } catch (error) {
+    console.error('Error fetching suggestions:', error);
+    throw error;
+  }
+};
+
+// PHASE 2: Enrich selected places with full details (coordinates, ratings, etc.)
+export const enrichPlaces = async (
+  places: TripRecommendation[],
+  city: string,
+  apiKey: string,
+  latLng?: { latitude: number, longitude: number }
+): Promise<{ enrichedPlaces: TripRecommendation[], total: number }> => {
+  try {
+    const response = await fetch(ENRICH_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        places,
+        city,
+        apiKey,
+        latLng
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return {
+      enrichedPlaces: data.enrichedPlaces || [],
+      total: data.total || 0
+    };
+  } catch (error) {
+    console.error('Error enriching places:', error);
+    throw error;
+  }
+};
+
+// OLD STREAMING VERSION - Kept for reference, but not used in new flow
+export const fetchSuggestionsStream = async (
+  city: string,
+  query: string,
+  onBatch: (batch: TripRecommendation[], batchNumber: number) => void,
+  onComplete?: () => void,
+  onError?: (error: Error) => void,
   excludeTitles: string[] = [],
   latLng?: { latitude: number, longitude: number }
-): Promise<{ suggestions: TripRecommendation[], sources: GroundingChunk[] }> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
-  const languageName = language === 'he' ? 'Hebrew' : 'English';
-  const excludeText = excludeTitles.length > 0 
-    ? `\nDO NOT suggest: [${excludeTitles.join(', ')}].` 
-    : '';
-  
-  const prompt = `You are a travel expert. Suggest 18-20 specific places in ${city} for: "${query}".
-  ${excludeText}
-  Respond in ${languageName}.
-  
-  RULES:
-  1. USE GOOGLE MAPS GROUNDING: Find exact coordinates and ratings.
-  2. PROVIDE GEOLOCATION: You MUST include (latitude, longitude) for every place.
-  3. BE SPECIFIC: Use full official names for landmarks.
-  
-  RESPONSE FORMAT (Strictly one line per place):
-  * [Category] | Place Name | [Rating/5.0] | (latitude, longitude) - Short Description
-  
-  Example:
-  * [Landmark] | Eiffel Tower | [4.8/5.0] | (48.8584, 2.2945) - The iconic iron lattice tower.`;
+): Promise<void> => {
+  try {
+    const response = await fetch(API_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        city,
+        query,
+        excludeTitles,
+        latLng
+      })
+    });
 
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: prompt,
-    config: {
-      tools: [{ googleMaps: {} }], 
-      toolConfig: {
-        retrievalConfig: {
-          latLng: latLng
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('Streaming not supported');
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      
+      // Keep the last incomplete line in buffer
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          try {
+            const parsed = JSON.parse(data);
+            
+            if (parsed.error) {
+              throw new Error(parsed.error);
+            }
+            
+            if (parsed.done) {
+              onComplete?.();
+              return;
+            }
+            
+            if (parsed.results && Array.isArray(parsed.results)) {
+              onBatch(parsed.results, parsed.batchNumber || 0);
+            }
+          } catch (e) {
+            console.error('Failed to parse SSE data:', e);
+          }
         }
       }
-    },
-  });
-
-  const text = response.text || "";
-  const sdkChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-  
-  const suggestions: TripRecommendation[] = [];
-  const lines = text.split('\n');
-  const coordRegex = /\((-?\d+\.\d+),\s*(-?\d+\.\d+)\)/;
-  const ratingRegex = /\[(\d+\.?\d*)\/5\.0\]/;
-  const categoryRegex = /^[*-\s]*\[(.*?)\]/;
-
-  lines.forEach((line) => {
-    const trimmedLine = line.trim();
-    if (trimmedLine.startsWith('-') || trimmedLine.startsWith('*')) {
-      let category = "Other";
-      const catMatch = trimmedLine.match(categoryRegex);
-      if (catMatch) category = catMatch[1];
-
-      let lat: number | undefined;
-      let lng: number | undefined;
-      const coordMatch = trimmedLine.match(coordRegex);
-      if (coordMatch) {
-        lat = parseFloat(coordMatch[1]);
-        lng = parseFloat(coordMatch[2]);
-      }
-
-      let rating: number | undefined;
-      const ratingMatch = trimmedLine.match(ratingRegex);
-      if (ratingMatch) rating = parseFloat(ratingMatch[1]);
-
-      const parts = trimmedLine.split('|').map(p => p.trim());
-      let placeName = "Unknown Place";
-      if (parts.length > 1) {
-        placeName = parts[1].replace(/\[.*?\]/, '').trim();
-      }
-
-      let description = "";
-      const descPart = trimmedLine.split(' - ');
-      description = descPart.length > 1 ? descPart[descPart.length - 1].trim() : `Explore ${placeName} in ${city}.`;
-
-      const matchingChunk = sdkChunks.find(c => 
-        c.maps?.title?.toLowerCase().includes(placeName.toLowerCase()) || 
-        placeName.toLowerCase().includes(c.maps?.title?.toLowerCase() || "")
-      );
-
-      // Extract Place ID - prioritize direct placeId field, then parse from URI
-      let placeId = matchingChunk?.maps?.placeId;
-      if (!placeId) {
-        const uri = matchingChunk?.maps?.uri || "";
-        const placeIdMatch = uri.match(/place_id:([^&/]+)/) || uri.match(/query_place_id=([^&/]+)/);
-        placeId = placeIdMatch ? placeIdMatch[1] : undefined;
-      }
-
-      if (placeName && placeName !== "Unknown Place" && lat !== undefined && lng !== undefined) {
-        // Use Places Photo API - will be fetched client-side with place_id
-        // Don't pre-generate photo URL, let client fetch via Places API
-        const photoUrl = undefined;
-
-        suggestions.push({
-          title: placeName,
-          description: description,
-          category: category,
-          mapUrl: matchingChunk?.maps?.uri,
-          lat,
-          lng,
-          rating,
-          photoUrl: photoUrl,
-          placeId: placeId
-        });
-      }
     }
-  });
 
-  const uniqueSuggestions = suggestions.filter((v, i, a) => a.findIndex(t => (t.title === v.title)) === i);
-
-  return { 
-    suggestions: uniqueSuggestions.sort((a, b) => (b.rating || 0) - (a.rating || 0)), 
-    sources: sdkChunks.filter(c => !!c.maps) as GroundingChunk[] 
-  };
+    onComplete?.();
+  } catch (error) {
+    console.error('Error fetching streaming suggestions:', error);
+    onError?.(error as Error);
+    throw error;
+  }
 };

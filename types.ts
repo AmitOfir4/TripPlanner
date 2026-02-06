@@ -1,5 +1,10 @@
 
-export type Language = 'en' | 'he';
+export interface GoogleUser {
+  email: string;
+  name: string;
+  picture: string;
+  accessToken: string;
+}
 
 export interface GroundingChunk {
   maps?: {
@@ -17,8 +22,8 @@ export interface TripRecommendation {
   lat?: number;
   lng?: number;
   rating?: number;
-  photoUrl?: string;
   placeId?: string;
+  customKmlIcon?: string;
 }
 
 export interface TripLayer {
@@ -31,5 +36,4 @@ export interface TripData {
   summary: string;
   layers: TripLayer[];
   sources: GroundingChunk[];
-  language: Language;
 }
