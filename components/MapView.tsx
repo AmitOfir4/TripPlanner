@@ -26,6 +26,7 @@ interface MapViewProps {
   places: TripRecommendation[];
   savedLayers?: TripLayer[];
   focusedPlace?: TripRecommendation | null;
+  userLocation?: { lat: number; lng: number } | null;
   onMarkerClick?: (place: TripRecommendation) => void;
   onAddPlace?: (place: TripRecommendation) => void;
 }
@@ -121,6 +122,7 @@ export const MapView: React.FC<MapViewProps> = ({
   places, 
   savedLayers = [],
   focusedPlace,
+  userLocation,
   onMarkerClick,
   onAddPlace
 }) => {
@@ -139,8 +141,8 @@ export const MapView: React.FC<MapViewProps> = ({
   
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
-  // Default center (will be updated by MapController)
-  const defaultCenter = { lat: 25.2048, lng: 55.2708 }; // Dubai as fallback
+  // Default center - use user location if available, otherwise world view
+  const defaultCenter = userLocation || { lat: 20, lng: 0 }; // User location or world center
 
   // Search Google Maps for places
   useEffect(() => {

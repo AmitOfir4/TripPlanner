@@ -1,7 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { Header } from './components/Header';
-import { SearchForm } from './components/SearchForm';
-import { PlaceResults } from './components/PlaceResults';
+import { ChatInterface, ChatMessage } from './components/ChatInterface';
 import { SavedPlacesSidebar } from './components/SavedPlacesSidebar';
 import { ImportModal } from './components/ImportModal';
 import { MapView } from './components/MapView';
@@ -11,6 +10,7 @@ import { useTripPlanner } from './hooks/useTripPlanner';
 import { useMapImport } from './hooks/useMapImport';
 import { useUserLocation } from './hooks/useUserLocation';
 import { TripService } from './services/tripService';
+import { sendChatMessage } from './chatService';
 import { MyMapsFile } from './googleDriveService';
 import { TripRecommendation } from './types';
 
@@ -18,9 +18,10 @@ const App: React.FC = () => {
   const userLocation = useUserLocation();
   const { googleUser, login, logout } = useGoogleAuth();
   const { apiKey, setApiKey, clearApiKey, hasApiKey } = useApiKey();
-  const suggestionsEndRef = useRef<HTMLDivElement>(null);
   const [focusedPlace, setFocusedPlace] = useState<TripRecommendation | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
 
   const {
     currentCity,
@@ -40,17 +41,66 @@ const App: React.FC = () => {
     resetTrip
   } = useTripPlanner(userLocation, apiKey);
 
-  // Wrap handleSearch to catch API key errors
-  const handleSearch = async (e: React.FormEvent | null) => {
-    setErrorMessage(''); // Clear previous errors
+  // Handle sending chat messages to AI travel agent
+  const handleSendMessage = async (message: string) => {
+    if (!currentCity || !apiKey) {
+      if (!apiKey) {
+        setErrorMessage('Please provide your Gemini API key. Get one free at https://aistudio.google.com/apikey');
+      }
+      return;
+    }
+
+    // Add user message
+    const userMessage: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: message,
+      timestamp: new Date()
+    };
+    setChatMessages(prev => [...prev, userMessage]);
+    setErrorMessage('');
+    setChatLoading(true);
+
     try {
-      await handleSearchBase(e);
+      const { response, dayGroups, places } = await sendChatMessage(
+        currentCity,
+        message,
+        apiKey,
+        chatMessages
+      );
+
+      // Add AI response with day-grouped places
+      const aiMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: response,
+        timestamp: new Date(),
+        dayGroups: dayGroups,
+        places: places
+      };
+      setChatMessages(prev => [...prev, aiMessage]);
+      setChatLoading(false);
     } catch (error: any) {
+      console.error('Chat error:', error);
       if (error.message?.includes('API key')) {
         setErrorMessage(error.message);
-      } else {
-        console.error('Search error:', error);
       }
+      setChatLoading(false);
+    }
+  };
+
+  // Handle adding a place from chat recommendation
+  const handleAddPlaceFromChat = (place: TripRecommendation) => {
+    savePlace(place);
+    setFocusedPlace(place); // Focus the map on the newly added place
+  };
+
+  // Handle adding all places from chat recommendation
+  const handleAddAllPlaces = (places: TripRecommendation[]) => {
+    places.forEach(place => savePlace(place));
+    // Focus on the first place
+    if (places.length > 0) {
+      setFocusedPlace(places[0]);
     }
   };
 
@@ -195,7 +245,6 @@ const App: React.FC = () => {
                     <button
                       onClick={() => {
                         setErrorMessage('');
-                        // Trigger the API key modal by simulating a click
                         document.querySelector('[title="Add your Gemini API Key"]')?.dispatchEvent(new Event('click', { bubbles: true }));
                       }}
                       className="px-4 py-2 bg-amber-600 text-white rounded-xl text-sm font-bold hover:bg-amber-700 transition-colors"
@@ -213,49 +262,39 @@ const App: React.FC = () => {
               </div>
             )}
 
-            <SearchForm
-              currentCity={currentCity}
-              query={query}
-              loading={loading}
-              hasExistingPlaces={pendingSuggestions.length > 0}
-              onCityChange={setCurrentCity}
-              onQueryChange={setQuery}
-              onSearch={handleSearch}
-            />
-
-            {/* Map View with Recommended Places on the Right */}
+            {/* Chat & Map Layout */}
             <div className="flex flex-col lg:flex-row gap-6">
-              {/* Map Section */}
-              {currentCity && (pendingSuggestions.length > 0 || savedLayers.length > 0) && (
-                <div className="flex-1 lg:max-w-[60%]">
+              {/* Chat Interface - Left Side */}
+              <div className="lg:w-[50%] shrink-0 h-[940px]">
+                <ChatInterface
+                  currentCity={currentCity}
+                  onCityChange={setCurrentCity}
+                  loading={chatLoading}
+                  messages={chatMessages}
+                  savedLayers={savedLayers}
+                  onSendMessage={handleSendMessage}
+                  onAddPlace={handleAddPlaceFromChat}
+                  onAddAll={handleAddAllPlaces}
+                  onShowInMap={setFocusedPlace}
+                />
+              </div>
+
+              {/* Map Section - Right Side */}
+              {(
+                <div className="flex-1">
                   <MapView
                     city={currentCity}
-                    places={pendingSuggestions}
+                    places={[]}
                     savedLayers={savedLayers}
                     focusedPlace={focusedPlace}
+                    userLocation={userLocation}
                     onAddPlace={savePlace}
-                  />
-                </div>
-              )}
-
-              {/* Recommended Places - Right Side of Map */}
-              {pendingSuggestions.length > 0 && (
-                <div className="lg:w-[40%] shrink-0">
-                  <PlaceResults
-                    loading={loading}
-                    currentCity={currentCity}
-                    suggestions={pendingSuggestions}
-                    suggestionsEndRef={suggestionsEndRef}
-                    onSavePlace={savePlace}
-                    onDismissPlace={handleDismissPlace}
-                    onIconChange={handleIconChange}
-                    onViewOnMap={setFocusedPlace}
                   />
                 </div>
               )}
             </div>
 
-            {/* Saved Places - Below Map */}
+            {/* Saved Places - Below Chat & Map */}
             {savedLayers.length > 0 && (
               <SavedPlacesSidebar
                 savedLayers={savedLayers}
