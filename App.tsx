@@ -290,7 +290,7 @@ const App: React.FC = () => {
                   onSendMessage={handleSendMessage}
                   onAddPlace={handleAddPlaceFromChat}
                   onAddAll={handleAddAllPlaces}
-                  onShowInMap={setFocusedPlace}
+                  //onShowInMap={setFocusedPlace}
                 />
               </div>
 
