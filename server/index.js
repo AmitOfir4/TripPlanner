@@ -391,10 +391,10 @@ app.post('/api/chat', async (req, res) => {
   try {
     const { city, message, apiKey, conversationHistory = [] } = req.body;
 
-    if (!city || !message) {
+    if (!message) {
       return res.status(400).json({
         error: 'Missing required fields',
-        message: 'Both city and message are required'
+        message: 'Message is required'
       });
     }
 
@@ -409,7 +409,7 @@ app.post('/api/chat', async (req, res) => {
       });
     }
 
-    console.log(`[Chat] ${city} - User: "${message}"${apiKey ? ' (user key)' : ' (env key)'}`);
+    console.log(`[Chat] ${city || 'Unknown'} - User: "${message}"${apiKey ? ' (user key)' : ' (env key)'}`);
 
     // Initialize Gemini AI
     const ai = new GoogleGenAI({ apiKey: geminiApiKey });
@@ -425,8 +425,9 @@ app.post('/api/chat', async (req, res) => {
     const isMultiDayRequest = /\b(\d+[\s-]*day|day[\s-]*trip|itinerary|\d+[\s-]*night|week)\b/i.test(message);
     
     // Expert travel agent prompt
-    const prompt = `You are an expert travel agent helping someone plan a trip to ${city}. 
+    const prompt = `You are an expert travel agent helping someone plan their trip${city ? ` to ${city}` : ''}. 
 Be conversational, friendly, and provide detailed recommendations.
+${!city ? '\nIMPORTANT: First, identify which city/destination the user is asking about from their message.' : ''}
 
 IMPORTANT FORMATTING RULES:
 1. For EVERY place you recommend (restaurants, hotels, attractions, cafes, etc.), use this EXACT format:
@@ -585,10 +586,18 @@ ${isMultiDayRequest ? 'Provide a detailed day-by-day itinerary with [DAY: ...] m
     const totalPlaces = dayGroups.reduce((sum, day) => sum + day.places.length, 0);
     console.log(`[Chat] Extracted ${totalPlaces} places across ${dayGroups.length} day(s)`);
 
+    // Extract city from response if not provided (look for city name in places or message)
+    let responseCity = city;
+    if (!responseCity && totalPlaces > 0) {
+      // Try to extract city from the first place or the response
+      const cityMatch = aiResponse.match(/\b(?:in|to|visiting)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/);
+      responseCity = cityMatch ? cityMatch[1] : '';
+    }
+
     res.json({
       response: cleanIntro,
       dayGroups: dayGroups,
-      city
+      city: responseCity
     });
 
   } catch (error) {

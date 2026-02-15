@@ -22,6 +22,7 @@ const App: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
 
   const {
     currentCity,
@@ -43,10 +44,8 @@ const App: React.FC = () => {
 
   // Handle sending chat messages to AI travel agent
   const handleSendMessage = async (message: string) => {
-    if (!currentCity || !apiKey) {
-      if (!apiKey) {
-        setErrorMessage('Please provide your Gemini API key. Get one free at https://aistudio.google.com/apikey');
-      }
+    if (!apiKey) {
+      setErrorMessage('Please provide your Gemini API key. Get one free at https://aistudio.google.com/apikey');
       return;
     }
 
@@ -62,12 +61,17 @@ const App: React.FC = () => {
     setChatLoading(true);
 
     try {
-      const { response, dayGroups, places } = await sendChatMessage(
-        currentCity,
+      const { response, dayGroups, places, city } = await sendChatMessage(
+        currentCity || '',
         message,
         apiKey,
         chatMessages
       );
+
+      // Update city if returned from AI
+      if (city && !currentCity) {
+        setCurrentCity(city);
+      }
 
       // Add AI response with day-grouped places
       const aiMessage: ChatMessage = {
@@ -216,6 +220,19 @@ const App: React.FC = () => {
     );
   };
 
+  const handleRemovePlaceFromMap = (place: TripRecommendation) => {
+    const layer = savedLayers.find(l => l.places.some(p => p.title === place.title));
+    if (layer) {
+      handleRemovePlace(layer.name, place.title);
+    }
+  };
+
+  const handleViewInMap = (place: TripRecommendation) => {
+    setFocusedPlace(place);
+    // Scroll to map view with smooth animation
+    mapContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   return (
     <div className="app-container min-h-screen bg-slate-50 flex flex-col antialiased">
       <Header
@@ -263,12 +280,10 @@ const App: React.FC = () => {
             )}
 
             {/* Chat & Map Layout */}
-            <div className="flex flex-col lg:flex-row gap-6">
+            <div ref={mapContainerRef} className="flex flex-col lg:flex-row gap-6">
               {/* Chat Interface - Left Side */}
               <div className="lg:w-[50%] shrink-0 h-[940px]">
                 <ChatInterface
-                  currentCity={currentCity}
-                  onCityChange={setCurrentCity}
                   loading={chatLoading}
                   messages={chatMessages}
                   savedLayers={savedLayers}
@@ -280,18 +295,17 @@ const App: React.FC = () => {
               </div>
 
               {/* Map Section - Right Side */}
-              {(
-                <div className="flex-1">
-                  <MapView
-                    city={currentCity}
-                    places={[]}
-                    savedLayers={savedLayers}
-                    focusedPlace={focusedPlace}
-                    userLocation={userLocation}
-                    onAddPlace={savePlace}
-                  />
-                </div>
-              )}
+              <div className="flex-1">
+                <MapView
+                  city={currentCity || ' '}
+                  places={[]}
+                  savedLayers={savedLayers}
+                  focusedPlace={focusedPlace}
+                  userLocation={userLocation}
+                  onAddPlace={savePlace}
+                  onRemovePlace={handleRemovePlaceFromMap}
+                />
+              </div>
             </div>
 
             {/* Saved Places - Below Chat & Map */}
@@ -304,6 +318,7 @@ const App: React.FC = () => {
                 onDownload={handleDownload}
                 onUploadToDrive={handleUploadToDrive}
                 onEnrichSelected={handleEnrichSelected}
+                onViewInMap={handleViewInMap}
               />
             )}
           </div>

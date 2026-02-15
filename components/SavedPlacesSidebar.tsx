@@ -16,6 +16,7 @@ interface SavedPlacesSidebarProps {
   onDownload: () => void;
   onUploadToDrive: () => void;
   onEnrichSelected?: () => void;
+  onViewInMap?: (place: TripRecommendation) => void;
 }
 
 export const SavedPlacesSidebar: React.FC<SavedPlacesSidebarProps> = ({
@@ -25,7 +26,8 @@ export const SavedPlacesSidebar: React.FC<SavedPlacesSidebarProps> = ({
   onRemovePlace,
   onDownload,
   onUploadToDrive,
-  onEnrichSelected
+  onEnrichSelected,
+  onViewInMap
 }) => {
   const totalPlaces = savedLayers.reduce((acc, l) => acc + l.places.length, 0);
 
@@ -63,9 +65,10 @@ export const SavedPlacesSidebar: React.FC<SavedPlacesSidebarProps> = ({
               key={idx} 
               layer={layer} 
               onRemovePlace={onRemovePlace}
+              onViewInMap={onViewInMap}
             />
           ))
-        )}
+        )}  
       </div>
     </section>
   );
@@ -83,9 +86,10 @@ const EmptyState: React.FC = () => (
 interface LayerSectionProps {
   layer: TripLayer;
   onRemovePlace: (layerName: string, placeTitle: string) => void;
+  onViewInMap?: (place: TripRecommendation) => void;
 }
 
-const LayerSection: React.FC<LayerSectionProps> = ({ layer, onRemovePlace }) => {
+const LayerSection: React.FC<LayerSectionProps> = ({ layer, onRemovePlace, onViewInMap }) => {
   const placesByCategory = layer.places.reduce((acc, place) => {
     const category = place.category || 'Other';
     if (!acc[category]) acc[category] = [];
@@ -113,6 +117,7 @@ const LayerSection: React.FC<LayerSectionProps> = ({ layer, onRemovePlace }) => 
             places={placesByCategory[category]}
             layerName={layer.name}
             onRemovePlace={onRemovePlace}
+            onViewInMap={onViewInMap}
           />
         ))}
       </div>
@@ -125,13 +130,15 @@ interface CategorySectionProps {
   places: TripRecommendation[];
   layerName: string;
   onRemovePlace: (layerName: string, placeTitle: string) => void;
+  onViewInMap?: (place: TripRecommendation) => void;
 }
 
 const CategorySection: React.FC<CategorySectionProps> = ({
   category,
   places,
   layerName,
-  onRemovePlace
+  onRemovePlace,
+  onViewInMap
 }) => (
   <div className="space-y-2">
     <div className="flex items-center gap-2 px-2">
@@ -149,6 +156,7 @@ const CategorySection: React.FC<CategorySectionProps> = ({
           place={place}
           index={pIdx}
           onRemove={() => onRemovePlace(layerName, place.title)}
+          onViewInMap={onViewInMap}
         />
       ))}
     </div>
@@ -159,16 +167,23 @@ interface SavedPlaceCardProps {
   place: TripRecommendation;
   index: number;
   onRemove: () => void;
+  onViewInMap?: (place: TripRecommendation) => void;
 }
 
-const SavedPlaceCard: React.FC<SavedPlaceCardProps> = ({ place, index, onRemove }) => (
+const SavedPlaceCard: React.FC<SavedPlaceCardProps> = ({ place, index, onRemove, onViewInMap }) => (
   <div className="bg-slate-50/50 p-5 rounded-3xl border border-slate-100 shadow-sm hover:bg-white hover:shadow-lg transition-all group flex items-start gap-4">
     <div className="w-12 h-12 rounded-2xl overflow-hidden shrink-0">
       <PlaceImage place={place} index={index} />
     </div>
     
     <div className="flex-1 min-w-0">
-      <h5 className="font-bold text-slate-900 text-sm truncate">{place.title}</h5>
+      <h5 
+        onClick={() => onViewInMap?.(place)}
+        className="font-bold text-slate-900 text-sm truncate cursor-pointer hover:text-indigo-600 transition-colors"
+        title="Click to view on map"
+      >
+        {place.title}
+      </h5>
       <div className="flex items-center gap-2 mt-1">
         <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">
           {place.category}

@@ -1,7 +1,7 @@
 /// <reference types="@types/google.maps" />
 import React, { useState, useEffect, useRef } from 'react';
 import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow, useMap } from '@vis.gl/react-google-maps';
-import { MapPin, Maximize2, Minimize2, Star, ExternalLink, Search, Edit2, Check, X } from 'lucide-react';
+import { MapPin, Maximize2, Minimize2, Star, ExternalLink, Search, Edit2, Check, X, Trash2, Plus } from 'lucide-react';
 import { TripRecommendation, TripLayer } from '../types';
 import { AVAILABLE_KML_ICONS, KML_ICON_STYLES, CATEGORY_RULES } from '../constants';
 import { KmlIconSelector } from './KmlIconSelector';
@@ -29,6 +29,7 @@ interface MapViewProps {
   userLocation?: { lat: number; lng: number } | null;
   onMarkerClick?: (place: TripRecommendation) => void;
   onAddPlace?: (place: TripRecommendation) => void;
+  onRemovePlace?: (place: TripRecommendation) => void;
 }
 
 // Component to handle geocoding and map centering
@@ -124,7 +125,8 @@ export const MapView: React.FC<MapViewProps> = ({
   focusedPlace,
   userLocation,
   onMarkerClick,
-  onAddPlace
+  onAddPlace,
+  onRemovePlace
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<TripRecommendation | null>(null);
@@ -264,6 +266,12 @@ export const MapView: React.FC<MapViewProps> = ({
   // Flatten all saved places from layers
   const savedPlaces = savedLayers.flatMap(layer => layer.places);
   const savedPlacesWithCoords = savedPlaces.filter(p => p.lat && p.lng);
+
+  // Helper to check if a place is already saved
+  const isPlaceSaved = (place: TripRecommendation | null): boolean => {
+    if (!place) return false;
+    return savedPlaces.some(p => p.title === place.title);
+  };
 
   if (!city) return null;
 
@@ -509,6 +517,37 @@ export const MapView: React.FC<MapViewProps> = ({
                         <span className="text-xs font-bold">{selectedPlace.rating.toFixed(1)}</span>
                       </div>
                     )}
+                    
+                    <div className="flex gap-2 mb-2">
+                      {isPlaceSaved(selectedPlace) ? (
+                        onRemovePlace && (
+                          <button
+                            onClick={() => {
+                              onRemovePlace(selectedPlace);
+                              setSelectedPlace(null);
+                            }}
+                            className="flex-1 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            Remove from Trip
+                          </button>
+                        )
+                      ) : (
+                        onAddPlace && (
+                          <button
+                            onClick={() => {
+                              onAddPlace(selectedPlace);
+                              setSelectedPlace(null);
+                            }}
+                            className="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
+                          >
+                            <Plus className="w-3 h-3" />
+                            Add to Trip
+                          </button>
+                        )
+                      )}
+                    </div>
+
                     <a
                       href={
                         selectedPlace.lat && selectedPlace.lng

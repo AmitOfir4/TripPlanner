@@ -18,8 +18,6 @@ export interface ChatMessage {
 }
 
 interface ChatInterfaceProps {
-  currentCity: string;
-  onCityChange: (city: string) => void;
   loading: boolean;
   messages: ChatMessage[];
   savedLayers: TripLayer[];
@@ -30,8 +28,6 @@ interface ChatInterfaceProps {
 }
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({
-  currentCity,
-  onCityChange,
   loading,
   messages,
   savedLayers,
@@ -82,7 +78,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     <div className="chat-container flex flex-col h-full bg-white rounded-3xl border-2 border-slate-200 shadow-xl overflow-hidden">
       {/* Chat Header */}
       <div className="chat-header bg-gradient-to-r from-indigo-600 to-purple-600 p-6">
-        <div className="flex items-center gap-3 mb-3">
+        <div className="flex items-center gap-3">
           <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-lg">
             <Bot className="w-7 h-7 text-indigo-600" />
           </div>
@@ -90,18 +86,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             <h2 className="text-xl font-black text-white">AI Travel Expert</h2>
             <p className="text-sm text-indigo-100 font-medium">Your personal trip planner</p>
           </div>
-        </div>
-
-        {/* City Input */}
-        <div className="relative">
-          <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-indigo-400" />
-          <input
-            type="text"
-            placeholder="Where are you traveling?"
-            value={currentCity}
-            onChange={(e) => onCityChange(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 bg-white/20 backdrop-blur-sm border-2 border-white/30 rounded-xl text-white placeholder-indigo-200 focus:outline-none focus:ring-2 focus:ring-white/50 font-semibold"
-          />
         </div>
       </div>
 
@@ -121,7 +105,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-2xl w-full">
               {[
-                '3-day romantic trip to Paris',
+                '3-day trip to Paris',
                 'Best food spots in Tokyo',
                 'Family vacation in Rome',
                 'Adventure activities in Bali'
@@ -163,7 +147,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                       ? 'bg-indigo-600 text-white'
                       : 'bg-white border-2 border-slate-200 text-slate-900'
                   }`}>
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                    <p className="text-base leading-relaxed whitespace-pre-wrap">{message.content}</p>
                   </div>
 
                   {/* Day-grouped places from AI response */}
@@ -208,7 +192,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                               {/* Day Description */}
                               {dayGroup.dayText && (
                                 <div className="bg-indigo-50 px-4 py-3 border-b-2 border-indigo-200">
-                                  <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">
+                                  <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
                                     {dayGroup.dayText}
                                   </p>
                                 </div>
@@ -399,16 +383,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           <input
             ref={inputRef}
             type="text"
-            placeholder={currentCity ? `Ask about ${currentCity}...` : 'First, enter a destination above...'}
+            placeholder="Ask me anything about your trip..."
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyPress={handleKeyPress}
-            disabled={!currentCity || loading}
+            disabled={loading}
             className="flex-1 px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-slate-900"
           />
           <button
             onClick={handleSend}
-            disabled={!inputMessage.trim() || !currentCity || loading}
+            disabled={!inputMessage.trim() || loading}
             className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl font-bold transition-colors flex items-center gap-2 disabled:cursor-not-allowed"
           >
             <Send className="w-5 h-5" />
