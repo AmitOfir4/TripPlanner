@@ -195,6 +195,11 @@ const SavedPlaceCard: React.FC<SavedPlaceCardProps> = ({ place, index, onRemove,
           </span>
         )}
       </div>
+      {place.description && (
+        <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed line-clamp-3">
+          {place.description}
+        </p>
+      )}
       <a
         href={
           place.mapUrl ||
