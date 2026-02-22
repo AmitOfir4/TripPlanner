@@ -58,7 +58,7 @@ const MapController: React.FC<{
         map.setZoom(15);
       } else {
         const geocoder = new google.maps.Geocoder();
-        const searchQuery = `${selectedPlace.title}, ${city}`;
+        const searchQuery = `${selectedPlace.title}, ${selectedPlace.city || city}`;
         geocoder.geocode({ address: searchQuery }, (results, status) => {
           if (status === 'OK' && results && results[0]) {
             const location = results[0].geometry.location;
@@ -77,9 +77,9 @@ const MapController: React.FC<{
         map.panTo({ lat: focusedPlace.lat, lng: focusedPlace.lng });
         map.setZoom(15);
       } else {
-        // No coordinates - geocode the place name
+        // No coordinates - geocode the place name using the place's own city if available
         const geocoder = new google.maps.Geocoder();
-        const searchQuery = `${focusedPlace.title}, ${city}`;
+        const searchQuery = `${focusedPlace.title}, ${focusedPlace.city || city}`;
         geocoder.geocode({ address: searchQuery }, (results, status) => {
           if (status === 'OK' && results && results[0]) {
             const location = results[0].geometry.location;
@@ -163,8 +163,7 @@ export const MapView: React.FC<MapViewProps> = ({
       const geocoder = new google.maps.Geocoder();
       
       geocoder.geocode({ 
-        address: searchQuery,
-        region: city ? city.toLowerCase() : undefined
+        address: searchQuery
       }, (results, status) => {
         setIsSearching(false);
         if (status === 'OK' && results) {
@@ -210,7 +209,7 @@ export const MapView: React.FC<MapViewProps> = ({
         if (typeof google === 'undefined' || !google.maps) return;
         
         const geocoder = new google.maps.Geocoder();
-        const searchQuery = `${focusedPlace.title}, ${city}`;
+        const searchQuery = `${focusedPlace.title}, ${focusedPlace.city || city}`;
         geocoder.geocode({ address: searchQuery }, (results, status) => {
           if (status === 'OK' && results && results[0]) {
             const location = results[0].geometry.location;
@@ -232,19 +231,25 @@ export const MapView: React.FC<MapViewProps> = ({
     // Check if Google Maps API is fully loaded
     if (!apiKey || typeof google === 'undefined' || !google.maps || !google.maps.Geocoder) return;
     
-    const savedPlaces = savedLayers.flatMap(layer => layer.places);
-    const placesNeedingGeocoding = savedPlaces.filter(p => !p.lat || !p.lng);
+    const placesNeedingGeocoding = savedLayers.flatMap(layer =>
+      layer.places
+        .filter(p => !p.lat || !p.lng)
+        .map(p => ({ place: p, layerCity: layer.name }))
+    );
     
     if (placesNeedingGeocoding.length === 0) return;
 
     try {
       const geocoder = new google.maps.Geocoder();
     
-      placesNeedingGeocoding.forEach(place => {
+      placesNeedingGeocoding.forEach(({ place, layerCity }) => {
         // Skip if already geocoded
         if (geocodedSavedPlaces[place.title]) return;
         
-        const searchQuery = `${place.title}, ${city}`;
+        // Use the place's own city, then the layer name (= city for AI searches),
+        // then fall back to the session city prop.
+        const geocodeCity = place.city || layerCity || city;
+        const searchQuery = `${place.title}, ${geocodeCity}`;
         geocoder.geocode({ address: searchQuery }, (results, status) => {
           if (status === 'OK' && results && results[0]) {
             const location = results[0].geometry.location;

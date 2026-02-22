@@ -174,23 +174,37 @@ export const useTripPlanner = (
     setEnriching(true);
 
     try {
-      console.log(`[Enrich] Enriching ${placesToEnrich.length} selected places`);
+      // Group places by their own city (places from chat carry place.city;
+      // places from the main search use the session city as fallback).
+      const cityGroups: Record<string, TripRecommendation[]> = {};
+      for (const place of placesToEnrich) {
+        const key = place.city || currentCity;
+        if (!cityGroups[key]) cityGroups[key] = [];
+        cityGroups[key].push(place);
+      }
+
+      console.log(`[Enrich] Enriching ${placesToEnrich.length} places across ${Object.keys(cityGroups).length} city group(s)`);
+
+      // Enrich each city group with the correct city so coordinates are accurate
+      const allEnriched: TripRecommendation[] = [];
+      for (const [groupCity, groupPlaces] of Object.entries(cityGroups)) {
+        const { enrichedPlaces } = await enrichPlaces(
+          groupPlaces,
+          groupCity,
+          apiKey || '',
+          userLocation
+        );
+        allEnriched.push(...enrichedPlaces);
+      }
       
-      const { enrichedPlaces, total } = await enrichPlaces(
-        placesToEnrich,
-        currentCity,
-        apiKey || '',
-        userLocation
-      );
-      
-      console.log(`[Enrich] Successfully enriched ${total} places`);
+      console.log(`[Enrich] Successfully enriched ${allEnriched.length} places`);
       
       // Update saved layers with enriched data
       setSavedLayers(prev => 
         prev.map(layer => ({
           ...layer,
           places: layer.places.map(place => {
-            const enriched = enrichedPlaces.find(e => e.title === place.title);
+            const enriched = allEnriched.find(e => e.title === place.title);
             return enriched || place;
           })
         }))
@@ -204,9 +218,13 @@ export const useTripPlanner = (
   };
 
   const savePlace = (place: TripRecommendation) => {
+    // Use the place's own city (set by chat when asking about a different city)
+    // so it lands in the correct layer, not always in the session city layer.
+    const layerName = place.city || currentCity;
+
     setSavedLayers(prev => {
       const existingLayerIdx = prev.findIndex(
-        l => l.name.toLowerCase() === currentCity.toLowerCase()
+        l => l.name.toLowerCase() === layerName.toLowerCase()
       );
       
       if (existingLayerIdx > -1) {
@@ -222,7 +240,7 @@ export const useTripPlanner = (
         return newLayers;
       }
       
-      return [...prev, { name: currentCity, places: [place] }];
+      return [...prev, { name: layerName, places: [place] }];
     });
     
     setPendingSuggestions(prev => prev.filter(p => p.title !== place.title));

@@ -38,9 +38,12 @@ export class TripService {
               return place;
             }
             
-            // Geocode the place
+            // Geocode the place — prefer the place's own city,
+            // then the layer name (which equals the city for AI searches),
+            // then fall back to the overall session city.
+            const geocodeCity = place.city || layer.name || cityName;
             try {
-              const searchQuery = `${place.title}, ${cityName}`;
+              const searchQuery = `${place.title}, ${geocodeCity}`;
               const results = await new Promise<google.maps.GeocoderResult[]>((resolve, reject) => {
                 geocoder.geocode({ address: searchQuery }, (results, status) => {
                   if (status === 'OK' && results) {

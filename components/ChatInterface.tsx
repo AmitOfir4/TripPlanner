@@ -156,6 +156,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     const allAvailablePlaces = message.dayGroups
                       .flatMap(group => filterAvailablePlaces(group.places || []));
                     
+                    // Detect if this is a flat recommendations response (single generic group)
+                    const isRecommendationsMode = message.dayGroups.length === 1 &&
+                      message.dayGroups[0].dayTitle === 'Recommendations';
+                    
                     return (
                       <div className="mt-3 space-y-4 w-full">
                         {/* Add All button */}
@@ -174,6 +178,77 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                           
                           // Skip rendering this day if no places available
                           if (availablePlaces.length === 0 && !dayGroup.dayText) return null;
+                          
+                          // Flat recommendations mode: no day-header card, just a light section
+                          if (isRecommendationsMode) {
+                            return (
+                              <div key={dayIdx} className="space-y-2">
+                                {availablePlaces.length > 0 && (
+                                  <div className="space-y-2">
+                                    {availablePlaces.map((place, placeIdx) => (
+                                      <div
+                                        key={placeIdx}
+                                        className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-3 hover:shadow-md transition-shadow"
+                                      >
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="flex-1">
+                                            <h4 className="font-bold text-slate-900 mb-1 text-sm">{place.title}</h4>
+                                            {place.description && (
+                                              <p className="text-xs text-slate-600 line-clamp-2">{place.description}</p>
+                                            )}
+                                            <div className="flex items-center gap-2 mt-2">
+                                              <span className="text-xs font-semibold text-indigo-600 bg-indigo-100 px-2 py-1 rounded-lg">
+                                                {place.category}
+                                              </span>
+                                              {place.rating && (
+                                                <span className="text-xs font-semibold text-amber-600">
+                                                  ⭐ {place.rating.toFixed(1)}
+                                                </span>
+                                              )}
+                                            </div>
+                                            <div className="flex items-center gap-3 mt-1.5">
+                                              <a
+                                                href={
+                                                  place.mapUrl ||
+                                                  (place.placeId 
+                                                    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.title)}&query_place_id=${place.placeId}`
+                                                    : place.lat && place.lng
+                                                    ? `https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`
+                                                    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.title)}`
+                                                  )
+                                                }
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="flex items-center gap-1 text-[9px] font-bold text-slate-400 hover:text-indigo-600 transition-colors w-fit"
+                                              >
+                                                <MapPin className="w-3 h-3" />
+                                                Google Maps
+                                              </a>
+                                              {onShowInMap && (
+                                                <button
+                                                  onClick={() => onShowInMap(place)}
+                                                  className="flex items-center gap-1 text-[9px] font-bold text-slate-400 hover:text-purple-600 transition-colors"
+                                                >
+                                                  <MapPin className="w-3 h-3" />
+                                                  Show In Map
+                                                </button>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <button
+                                            onClick={() => onAddPlace(place)}
+                                            className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors flex-shrink-0"
+                                          >
+                                            Add
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
                           
                           return (
                             <div key={dayIdx} className="border-2 border-indigo-200 rounded-2xl overflow-hidden">
@@ -383,7 +458,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           <input
             ref={inputRef}
             type="text"
-            placeholder="Ask me anything about your trip..."
+            placeholder="e.g. 3-day trip to Paris, or best restaurants in Milan..."
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyPress={handleKeyPress}

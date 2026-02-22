@@ -421,64 +421,98 @@ app.post('/api/chat', async (req, res) => {
         conversationHistory.map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`).join('\n');
     }
 
-    // Check if user is requesting a multi-day trip
-    const isMultiDayRequest = /\b(\d+[\s-]*day|day[\s-]*trip|itinerary|\d+[\s-]*night|week)\b/i.test(message);
-    
-    // Expert travel agent prompt
-    const prompt = `You are an expert travel agent helping someone plan their trip${city ? ` to ${city}` : ''}. 
-Be conversational, friendly, and provide detailed recommendations.
-${!city ? '\nIMPORTANT: First, identify which city/destination the user is asking about from their message.' : ''}
+    // ── Intent Detection ──────────────────────────────────────────────────
+    const isMultiDayRequest = /\b(\d+[\s-]*days?|day[\s-]*trip|itinerary|\d+[\s-]*nights?|full[\s-]*week)\b/i.test(message);
+    const isSpecificRecommendation = !isMultiDayRequest && (
+      /\b(recommend|suggest|best|top|good|great|where to|where can|affordable|cheap|budget|luxury|hidden gem|local|authentic|must[\s-]?try|must[\s-]?see|must[\s-]?visit)\b/i.test(message) ||
+      /\b(restaurant|cafe|coffee|food|eat|dining|hotel|stay|hostel|bar|nightlife|club|museum|gallery|attraction|shopping|market|beach|park|activities|things to do|sights)\b/i.test(message)
+    );
 
-IMPORTANT FORMATTING RULES:
-1. For EVERY place you recommend (restaurants, hotels, attractions, cafes, etc.), use this EXACT format:
+    // Extract optional qualifiers for richer, more tailored prompts
+    const isBudgetFriendly = /\b(affordable|cheap|budget|inexpensive|low[\s-]cost|free)\b/i.test(message);
+    const isLuxuryReq     = /\b(luxury|upscale|high[\s-]end|fine dining|michelin|premium|fancy)\b/i.test(message);
+    const isRomantic      = /\b(romantic|couple[s]?|date night|honeymoon)\b/i.test(message);
+    const isFamilyReq     = /\b(family|kid[s]?|children|child-friendly)\b/i.test(message);
+
+    const budgetNote = isBudgetFriendly
+      ? ' Prioritize budget-friendly and affordable options with good value for money. Include an approximate price range (e.g. "€10-20/person") in the description where possible.'
+      : isLuxuryReq
+      ? ' Focus on luxury, high-end or Michelin-recognized options. Mention awards, accolades or price level in descriptions where relevant.'
+      : '';
+    const vibeNote = isRomantic
+      ? ' Note which places are especially suitable for couples or romantic occasions.'
+      : isFamilyReq
+      ? ' Note which places are particularly family-friendly or suitable for children.'
+      : '';
+
+    // Resolve city: the message city always wins, session city is a fallback only
+    // Use a case-insensitive regex so "milan" and "Milan" both match
+    const messageCityMatch = message.match(
+      /\b(?:in|to|at|for|visit(?:ing)?)\s+([a-zA-Z][a-zA-Z\s]{1,20}?)\b(?=\s*[,.]|\s*$|\s*[-–]|\s+(?:for|with|and|please|i|we|to))/i
+    ) || message.match(/\b(?:restaurants|hotels|cafes?|bars?|clubs?|museums?|attractions?|places?|spots?|things?)\s+in\s+([a-zA-Z][a-zA-Z\s]{1,20}?)(?=[,.]|\s*$|\s+[-–]|\s+(?:for|with|and|please|i|we))/i);
+    const cityFromMessage = messageCityMatch ? messageCityMatch[1].trim() : null;
+    // Give explicit city in the message priority over the session/map city
+    let resolvedCity = cityFromMessage || city;
+
+    // ── Build Prompt Based on Intent ──────────────────────────────────────
+    let prompt;
+
+    if (isMultiDayRequest) {
+      // ── MODE 1: Multi-day trip itinerary ──
+      const dayCount = (message.match(/\b(\d+)[\s-]*days?\b/i) || [])[1] || 'several';
+      prompt = `You are an expert travel agent creating a complete trip itinerary${
+        resolvedCity ? ` for ${resolvedCity}` : ''
+      }.
+The user asked: "${message}"
+
+RULES:
+1. Create a detailed day-by-day itinerary for ${dayCount} days.
+2. Start EACH day with: [DAY: Day X - Theme Title]
+3. For EVERY place (breakfast spots, attractions, restaurants, bars, hotels) use EXACTLY:
    [PLACE: Name | Category | Description]
-   
-2. Categories must be one of: Landmark, Restaurant, Shopping, Hotel, Nature, Entertainment, Museum, Beach, Nightlife, Adventure, Culture, Cafe
-
-${isMultiDayRequest ? `3. MULTI-DAY TRIP FORMAT:
-   - Start each day with: [DAY: Day X - Title]
-   - Provide a complete day-by-day schedule
-   - Include breakfast, lunch, dinner venues
-   - Add morning, afternoon, and evening activities
-   - Suggest 8-12 places per day for a full experience
-   - Include travel tips between locations
-
-   Example:
-   [DAY: Day 1 - Classic Paris]
-   
-   Morning:
-   Start with coffee and croissants at this iconic Left Bank cafe.
-   [PLACE: Café de Flore | Cafe | Historic cafe for authentic Parisian breakfast]
-   
-   Spend 3-4 hours exploring the masterpieces.
-   [PLACE: Louvre Museum | Museum | World's largest art museum with Mona Lisa]
-   
-   Lunch:
-   [PLACE: Angelina Paris | Cafe | Famous for hot chocolate and Mont-Blanc dessert]
-   
-   [DAY: Day 2 - Art & Romance]
-   ...` : `3. SIMPLE RECOMMENDATIONS FORMAT:
-   - DO NOT use [DAY:...] markers
-   - Just provide a conversational response with place recommendations
-   - List 10-15 places with [PLACE:...] format
-   - Group by category if helpful (e.g., "Best Sushi Spots:", "Traditional Restaurants:", etc.)
-   
-   Example:
-   Tokyo is a food lover's paradise! Here are the best food spots you shouldn't miss:
-   
-   **Traditional Japanese:**
-   [PLACE: Sukiyabashi Jiro | Restaurant | World-famous sushi by master Jiro Ono]
-   [PLACE: Tempura Kondo | Restaurant | Michelin-starred tempura specialist]
-   
-   **Ramen Excellence:**
-   [PLACE: Ichiran Shibuya | Restaurant | Customizable tonkotsu ramen in private booths]
-   ...`}
+4. Categories: Landmark, Restaurant, Shopping, Hotel, Nature, Entertainment, Museum, Beach, Nightlife, Adventure, Culture, Cafe
+5. Include 8-12 places per day: morning activity, lunch, afternoon activity/sights, dinner, optional evening spot.
+6. Add 1-2 narrative sentences before each place for context and travel tips.
+7. Plain text only — no markdown bold (**).${budgetNote}${vibeNote}
 
 ${conversationContext}
+Now create the full ${dayCount}-day itinerary:`;
 
-User's current message: ${message}
+    } else if (isSpecificRecommendation) {
+      // ── MODE 2: Specific category/question recommendations ──
+      prompt = `You are a knowledgeable local travel guide${
+        resolvedCity ? ` for ${resolvedCity}` : ''
+      }.
+The user asked: "${message}"${budgetNote}${vibeNote}
 
-${isMultiDayRequest ? 'Provide a detailed day-by-day itinerary with [DAY: ...] markers and [PLACE:...] format for EVERY venue.' : 'Provide recommendations with [PLACE:...] format for EVERY venue. DO NOT use [DAY:...] markers.'}`;
+RULES:
+1. Start with 2-3 conversational intro sentences explaining your approach.
+2. Then list 12-20 highly relevant places.
+3. For EVERY place use EXACTLY: [PLACE: Name | Category | Description]
+4. Categories: Landmark, Restaurant, Shopping, Hotel, Nature, Entertainment, Museum, Beach, Nightlife, Adventure, Culture, Cafe
+5. Group places under short plain-text subheadings (e.g. "Traditional & Local:" or "Best Value Picks:").
+6. Each description: 1-2 sentences explaining why this place matches the request.
+7. DO NOT use [DAY:...] markers. Plain text only — no markdown bold (**).
+8. Only recommend places in${resolvedCity ? ` ${resolvedCity}` : ' the city the user asked about'}.
+
+${conversationContext}
+Your recommendations:`;
+
+    } else {
+      // ── MODE 3: General travel question / conversation ──
+      prompt = `You are a friendly and knowledgeable travel expert${
+        resolvedCity ? ` specializing in ${resolvedCity}` : ''
+      }.
+The user asked: "${message}"
+
+Answer helpfully and conversationally. If you naturally mention specific places worth visiting, format each as:
+[PLACE: Name | Category | Short description]
+Categories: Landmark, Restaurant, Shopping, Hotel, Nature, Entertainment, Museum, Beach, Nightlife, Adventure, Culture, Cafe
+
+Plain text only — no markdown bold (**). Do NOT use [DAY:...] markers.
+${conversationContext}
+Your answer:`;
+    }
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
@@ -533,6 +567,7 @@ ${isMultiDayRequest ? 'Provide a detailed day-by-day itinerary with [DAY: ...] m
             title: placeMatch[1].trim(),
             category: placeMatch[2].trim(),
             description: placeMatch[3].trim(),
+            city: resolvedCity || undefined,
             needsEnrichment: true,
             lat: undefined,
             lng: undefined,
@@ -556,6 +591,7 @@ ${isMultiDayRequest ? 'Provide a detailed day-by-day itinerary with [DAY: ...] m
           title: match[1].trim(),
           category: match[2].trim(),
           description: match[3].trim(),
+          city: resolvedCity || undefined,
           needsEnrichment: true,
           lat: undefined,
           lng: undefined,
@@ -587,7 +623,7 @@ ${isMultiDayRequest ? 'Provide a detailed day-by-day itinerary with [DAY: ...] m
     console.log(`[Chat] Extracted ${totalPlaces} places across ${dayGroups.length} day(s)`);
 
     // Extract city from response if not provided (look for city name in places or message)
-    let responseCity = city;
+    let responseCity = resolvedCity || city;
     if (!responseCity && totalPlaces > 0) {
       // Try to extract city from the first place or the response
       const cityMatch = aiResponse.match(/\b(?:in|to|visiting)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/);
