@@ -51,11 +51,26 @@ export default async function handler(req, res) {
         conversationHistory.map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`).join('\n');
     }
 
+    // ── Language Detection ────────────────────────────────────────────────────
+    const isHebrew = /[\u0590-\u05FF]/.test(message);
+    // Instruction appended to every prompt so the AI replies in the user's language
+    // but always keeps the structural markers ([PLACE:...] / [DAY:...]) in English
+    // so our server-side regex can parse them reliably.
+    const languageInstruction = isHebrew
+      ? '\nIMPORTANT: Reply entirely in Hebrew. Keep the markers [PLACE: ... | ... | ...] and [DAY: ...] exactly as shown — in English — so the app can parse them, but write all names, categories and descriptions in Hebrew inside those markers.'
+      : '';
+
     // ── Intent Detection ──────────────────────────────────────────────────────
-    const isMultiDayRequest = /\b(\d+[\s-]*days?|day[\s-]*trip|itinerary|\d+[\s-]*nights?|full[\s-]*week)\b/i.test(message);
+    // English + Hebrew keywords
+    const isMultiDayRequest =
+      /\b(\d+[\s-]*days?|day[\s-]*trip|itinerary|\d+[\s-]*nights?|full[\s-]*week)\b/i.test(message) ||
+      /\d+\s*ימים|\d+\s*לילות|מסלול|תוכנית טיול|יומן טיול/.test(message);
+
     const isSpecificRecommendation = !isMultiDayRequest && (
       /\b(recommend|suggest|best|top|good|great|where to|where can|affordable|cheap|budget|luxury|hidden gem|local|authentic|must[\s-]?try|must[\s-]?see|must[\s-]?visit)\b/i.test(message) ||
-      /\b(restaurant|cafe|coffee|food|eat|dining|hotel|stay|hostel|bar|nightlife|club|museum|gallery|attraction|shopping|market|beach|park|activities|things to do|sights)\b/i.test(message)
+      /\b(restaurant|cafe|coffee|food|eat|dining|hotel|stay|hostel|bar|nightlife|club|museum|gallery|attraction|shopping|market|beach|park|activities|things to do|sights)\b/i.test(message) ||
+      // Hebrew recommendation / place-type keywords
+      /המלצ|מסעדה|בית קפה|קפה|אוכל|לאכול|מלון|לינה|בר |מועדון|מוזיאון|גלריה|אטרקציה|קניות|שוק|חוף|פארק|פעילויות|מה לעשות/.test(message)
     );
 
     // Extract optional qualifiers for richer prompts
@@ -79,9 +94,13 @@ export default async function handler(req, res) {
     // A city explicitly mentioned in the message ALWAYS wins over the session city.
     // This lets users ask about a different city (e.g. "restaurants in Milan")
     // even when their current map/trip is for another city (e.g. Monaco).
+    // Handles both Latin and Hebrew city names.
     const messageCityMatch =
       message.match(/\b(?:restaurants?|hotels?|cafes?|bars?|clubs?|museums?|attractions?|places?|spots?|things?|activities)\s+in\s+([a-zA-Z][a-zA-Z\s]{1,25}?)(?=[,.]|\s*$|\s+[-–]|\s+(?:for|with|and|please|i|we))/i) ||
-      message.match(/\b(?:in|to|at|for|visit(?:ing)?)\s+([a-zA-Z][a-zA-Z\s]{1,20}?)(?=[,.]|\s*$|\s+[-–]|\s+(?:for|with|and|please|i|we|to))/i);
+      message.match(/\b(?:in|to|at|for|visit(?:ing)?)\s+([a-zA-Z][a-zA-Z\s]{1,20}?)(?=[,.]|\s*$|\s+[-–]|\s+(?:for|with|and|please|i|we|to))/i) ||
+      // Hebrew: "ב<עיר>", "ל<עיר>", "את <עיר>", or place-type keyword followed by city
+      message.match(/(?:מסעדות?|בתי קפה|מלונות?|ברים|אטרקציות?|מקומות?)\s+ב([\u0590-\u05FF][\u0590-\u05FF\s]{1,20}?)(?=[,.]|\s*$)/u) ||
+      message.match(/(?:^|\s)ב([\u0590-\u05FF][\u0590-\u05FF\s]{1,20}?)(?=[,.]|\s*$|\s+[-–])/u);
     const cityFromMessage = messageCityMatch ? messageCityMatch[1].trim() : null;
     const resolvedCity = cityFromMessage || city;
 
@@ -102,7 +121,7 @@ RULES:
 4. Categories: Landmark, Restaurant, Shopping, Hotel, Nature, Entertainment, Museum, Beach, Nightlife, Adventure, Culture, Cafe
 5. Include 8-12 places per day: morning activity, lunch, afternoon sights, dinner, optional evening spot.
 6. Add 1-2 narrative sentences before each place for context and travel tips.
-7. Plain text only — no markdown bold (**).${budgetNote}${vibeNote}
+7. Plain text only — no markdown bold (**).${budgetNote}${vibeNote}${languageInstruction}
 
 ${conversationContext}
 Now create the full ${dayCount}-day itinerary:`;
@@ -120,7 +139,7 @@ RULES:
 4. Categories: Landmark, Restaurant, Shopping, Hotel, Nature, Entertainment, Museum, Beach, Nightlife, Adventure, Culture, Cafe
 5. Group places under short plain-text subheadings (e.g. "Traditional & Local:" or "Best Value Picks:").
 6. Each description: 1-2 sentences explaining why it matches the request.
-7. DO NOT use [DAY:...] markers. Plain text only — no markdown bold (**).
+7. DO NOT use [DAY:...] markers. Plain text only — no markdown bold (**).${languageInstruction}
 8. ONLY recommend places in${resolvedCity ? ` ${resolvedCity}` : ' the city the user asked about'}.
 
 ${conversationContext}
@@ -136,7 +155,7 @@ Answer helpfully and conversationally. If you mention specific places worth visi
 [PLACE: Name | Category | Short description]
 Categories: Landmark, Restaurant, Shopping, Hotel, Nature, Entertainment, Museum, Beach, Nightlife, Adventure, Culture, Cafe
 
-Plain text only — no markdown bold (**). Do NOT use [DAY:...] markers.
+Plain text only — no markdown bold (**). Do NOT use [DAY:...] markers.${languageInstruction}
 ${conversationContext}
 Your answer:`;
     }

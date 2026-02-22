@@ -147,7 +147,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                       ? 'bg-indigo-600 text-white'
                       : 'bg-white border-2 border-slate-200 text-slate-900'
                   }`}>
-                    <p className="text-base leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                    <p dir="auto" className="text-base leading-relaxed whitespace-pre-wrap">{message.content}</p>
                   </div>
 
                   {/* Day-grouped places from AI response */}
@@ -267,7 +267,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                               {/* Day Description */}
                               {dayGroup.dayText && (
                                 <div className="bg-indigo-50 px-4 py-3 border-b-2 border-indigo-200">
-                                  <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                                  <p dir="auto" className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
                                     {dayGroup.dayText}
                                   </p>
                                 </div>
@@ -463,6 +463,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyPress={handleKeyPress}
             disabled={loading}
+            dir="auto"
             className="flex-1 px-4 py-3 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-slate-900"
           />
           <button
