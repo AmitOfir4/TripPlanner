@@ -43,7 +43,7 @@ export const KmlIconSelector: React.FC<KmlIconSelectorProps> = ({
                 }}
                 className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-all ${
                   icon.id === currentIconId
-                    ? 'bg-indigo-100 border-2 border-indigo-500'
+                    ? 'bg-teal-100 border-2 border-teal-500'
                     : 'bg-white border-2 border-transparent hover:border-slate-300'
                 }`}
                 title={icon.name}

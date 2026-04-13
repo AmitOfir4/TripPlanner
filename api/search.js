@@ -58,7 +58,7 @@ The Dubai Mall | Shopping`;
 
     // Fast generation without Google Maps grounding
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.5-flash-lite",
       contents: prompt,
       config: {
         temperature: 0.9,

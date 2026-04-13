@@ -144,7 +144,9 @@ export const MapView: React.FC<MapViewProps> = ({
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
   // Default center - use user location if available, otherwise world view
-  const defaultCenter = userLocation || { lat: 20, lng: 0 }; // User location or world center
+  const defaultCenter = (userLocation && isFinite(userLocation.lat) && isFinite(userLocation.lng))
+    ? userLocation
+    : { lat: 20, lng: 0 };
 
   // Search Google Maps for places
   useEffect(() => {
@@ -278,14 +280,14 @@ export const MapView: React.FC<MapViewProps> = ({
     return savedPlaces.some(p => p.title === place.title);
   };
 
-  if (!city) return null;
+  if (!city && savedLayers.length === 0) return null;
 
   return (
     <div className={`map-view-container bg-white rounded-3xl border-2 border-slate-200 overflow-hidden shadow-lg transition-all duration-300 ${isExpanded ? 'fixed inset-4 z-50' : 'relative'}`}>
       {/* Map Header */}
-      <div className="map-header flex items-center justify-between p-4 bg-gradient-to-r from-indigo-50 to-slate-50 border-b border-slate-200">
+      <div className="map-header flex items-center justify-between p-4 bg-gradient-to-r from-teal-50 to-slate-50 border-b border-slate-200">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 bg-teal-600 rounded-xl flex items-center justify-center">
             <MapPin className="w-5 h-5 text-white" />
           </div>
           <div>
@@ -310,7 +312,7 @@ export const MapView: React.FC<MapViewProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onFocus={() => setSelectedPlace(null)}
-              className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+              className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm"
             />
             {isSearching && (
               <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl p-4 z-50 border border-slate-200">
@@ -323,7 +325,7 @@ export const MapView: React.FC<MapViewProps> = ({
                   <button
                     key={idx}
                     onClick={() => handleSelectSearchResult(result)}
-                    className="w-full px-4 py-3 text-left hover:bg-indigo-50 transition-colors border-b border-slate-100 last:border-b-0"
+                    className="w-full px-4 py-3 text-left hover:bg-teal-50 transition-colors border-b border-slate-100 last:border-b-0"
                   >
                     <div className="font-bold text-sm text-slate-900">
                       {result.address_components[0]?.long_name || result.formatted_address}
@@ -407,6 +409,7 @@ export const MapView: React.FC<MapViewProps> = ({
               {savedPlacesWithCoords.map((place, index) => {
                 const iconStyle = place.customKmlIcon || getDefaultKmlIcon(place.category);
                 const iconUrl = AVAILABLE_KML_ICONS.find(icon => icon.id === iconStyle)?.url || AVAILABLE_KML_ICONS[0].url;
+                const isFocused = focusedPlace?.title === place.title;
                 
                 return (
                   <AdvancedMarker
@@ -417,17 +420,24 @@ export const MapView: React.FC<MapViewProps> = ({
                       onMarkerClick?.(place);
                     }}
                   >
-                    <img
-                      src={iconUrl}
-                      alt={place.category}
-                      style={{
-                        width: focusedPlace?.title === place.title ? '48px' : '32px',
-                        height: focusedPlace?.title === place.title ? '48px' : '32px',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                        filter: focusedPlace?.title === place.title ? 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))' : 'none'
-                      }}
-                    />
+                    <Pin
+                      background="transparent"
+                      borderColor="transparent"
+                      glyphColor="transparent"
+                      scale={isFocused ? 1.5 : 1}
+                    >
+                      <img
+                        src={iconUrl}
+                        alt={place.category}
+                        style={{
+                          width: isFocused ? '36px' : '28px',
+                          height: isFocused ? '36px' : '28px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                          filter: isFocused ? 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))' : 'none'
+                        }}
+                      />
+                    </Pin>
                   </AdvancedMarker>
                 );
               })}
@@ -441,6 +451,7 @@ export const MapView: React.FC<MapViewProps> = ({
                   
                   const iconStyle = place.customKmlIcon || getDefaultKmlIcon(place.category);
                   const iconUrl = AVAILABLE_KML_ICONS.find(icon => icon.id === iconStyle)?.url || AVAILABLE_KML_ICONS[0].url;
+                  const isFocused = focusedPlace?.title === place.title;
                   
                   return (
                     <AdvancedMarker
@@ -451,17 +462,24 @@ export const MapView: React.FC<MapViewProps> = ({
                         onMarkerClick?.(place);
                       }}
                     >
-                      <img
-                        src={iconUrl}
-                        alt={place.category}
-                        style={{
-                          width: focusedPlace?.title === place.title ? '48px' : '32px',
-                          height: focusedPlace?.title === place.title ? '48px' : '32px',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s',
-                          filter: focusedPlace?.title === place.title ? 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))' : 'none'
-                        }}
-                      />
+                      <Pin
+                        background="transparent"
+                        borderColor="transparent"
+                        glyphColor="transparent"
+                        scale={isFocused ? 1.5 : 1}
+                      >
+                        <img
+                          src={iconUrl}
+                          alt={place.category}
+                          style={{
+                            width: isFocused ? '36px' : '28px',
+                            height: isFocused ? '36px' : '28px',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            filter: isFocused ? 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))' : 'none'
+                          }}
+                        />
+                      </Pin>
                     </AdvancedMarker>
                   );
                 })
@@ -544,7 +562,7 @@ export const MapView: React.FC<MapViewProps> = ({
                               onAddPlace(selectedPlace);
                               setSelectedPlace(null);
                             }}
-                            className="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
+                            className="flex-1 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
                           >
                             <Plus className="w-3 h-3" />
                             Add to Trip
@@ -561,7 +579,7 @@ export const MapView: React.FC<MapViewProps> = ({
                       }
                       target="_blank"
                       rel="noreferrer"
-                      className="text-xs text-indigo-600 hover:text-indigo-700 font-bold flex items-center gap-1"
+                      className="text-xs text-teal-600 hover:text-teal-700 font-bold flex items-center gap-1"
                     >
                       <ExternalLink className="w-3 h-3" />
                       Open in Google Maps
@@ -592,7 +610,7 @@ export const MapView: React.FC<MapViewProps> = ({
                               type="text"
                               value={customPlaceName}
                               onChange={(e) => setCustomPlaceName(e.target.value)}
-                              className="flex-1 px-2 py-1 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              className="flex-1 px-2 py-1 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                               autoFocus
                             />
                             <button

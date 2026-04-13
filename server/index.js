@@ -173,7 +173,7 @@ IMPORTANT: Complete the FULL list of ${placeCount} items. Count to ${placeCount}
     }
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.5-flash-lite",
       contents: prompt,
       config: {
         temperature: 1.0,
@@ -276,7 +276,7 @@ Example:
 * [Landmark] | Eiffel Tower | [4.8/5.0] | (48.8584, 2.2945) - Iconic iron lattice tower`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.5-flash-lite",
       contents: prompt,
       config: {
         tools: [{ googleMaps: {} }],
@@ -386,7 +386,7 @@ Example:
   }
 });
 
-// Chat endpoint - conversational AI travel agent
+// Chat endpoint - streaming AI travel agent
 app.post('/api/chat', async (req, res) => {
   try {
     const { city, message, apiKey, conversationHistory = [] } = req.body;
@@ -398,250 +398,166 @@ app.post('/api/chat', async (req, res) => {
       });
     }
 
-    // Check for API key from user or fallback to environment variable
     const geminiApiKey = apiKey || process.env.GEMINI_API_KEY;
-    
     if (!geminiApiKey) {
-      console.error('No API key provided');
       return res.status(400).json({
         error: 'API key required',
         message: 'Please provide your Gemini API key. Get one free at https://aistudio.google.com/apikey'
       });
     }
 
-    console.log(`[Chat] ${city || 'Unknown'} - User: "${message}"${apiKey ? ' (user key)' : ' (env key)'}`);
-
-    // Initialize Gemini AI
-    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-    
-    // Build conversation context
-    let conversationContext = '';
-    if (conversationHistory.length > 0) {
-      conversationContext = '\n\nPrevious conversation:\n' + 
-        conversationHistory.map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`).join('\n');
-    }
-
-    // ── Intent Detection ──────────────────────────────────────────────────
-    const isMultiDayRequest = /\b(\d+[\s-]*days?|day[\s-]*trip|itinerary|\d+[\s-]*nights?|full[\s-]*week)\b/i.test(message);
-    const isSpecificRecommendation = !isMultiDayRequest && (
-      /\b(recommend|suggest|best|top|good|great|where to|where can|affordable|cheap|budget|luxury|hidden gem|local|authentic|must[\s-]?try|must[\s-]?see|must[\s-]?visit)\b/i.test(message) ||
-      /\b(restaurant|cafe|coffee|food|eat|dining|hotel|stay|hostel|bar|nightlife|club|museum|gallery|attraction|shopping|market|beach|park|activities|things to do|sights)\b/i.test(message)
-    );
-
-    // Extract optional qualifiers for richer, more tailored prompts
-    const isBudgetFriendly = /\b(affordable|cheap|budget|inexpensive|low[\s-]cost|free)\b/i.test(message);
-    const isLuxuryReq     = /\b(luxury|upscale|high[\s-]end|fine dining|michelin|premium|fancy)\b/i.test(message);
-    const isRomantic      = /\b(romantic|couple[s]?|date night|honeymoon)\b/i.test(message);
-    const isFamilyReq     = /\b(family|kid[s]?|children|child-friendly)\b/i.test(message);
-
-    const budgetNote = isBudgetFriendly
-      ? ' Prioritize budget-friendly and affordable options with good value for money. Include an approximate price range (e.g. "€10-20/person") in the description where possible.'
-      : isLuxuryReq
-      ? ' Focus on luxury, high-end or Michelin-recognized options. Mention awards, accolades or price level in descriptions where relevant.'
-      : '';
-    const vibeNote = isRomantic
-      ? ' Note which places are especially suitable for couples or romantic occasions.'
-      : isFamilyReq
-      ? ' Note which places are particularly family-friendly or suitable for children.'
-      : '';
-
-    // Resolve city: the message city always wins, session city is a fallback only
-    // Use a case-insensitive regex so "milan" and "Milan" both match
-    const messageCityMatch = message.match(
-      /\b(?:in|to|at|for|visit(?:ing)?)\s+([a-zA-Z][a-zA-Z\s]{1,20}?)\b(?=\s*[,.]|\s*$|\s*[-–]|\s+(?:for|with|and|please|i|we|to))/i
-    ) || message.match(/\b(?:restaurants|hotels|cafes?|bars?|clubs?|museums?|attractions?|places?|spots?|things?)\s+in\s+([a-zA-Z][a-zA-Z\s]{1,20}?)(?=[,.]|\s*$|\s+[-–]|\s+(?:for|with|and|please|i|we))/i);
+    // ── City Resolution ─────────────────────────────────────────────────
+    const messageCityMatch =
+      message.match(/\b(?:restaurants?|hotels?|cafes?|bars?|clubs?|museums?|attractions?|places?|spots?|things?|activities)\s+in\s+([a-zA-Z][a-zA-Z\s]{1,25}?)(?=[,.]|\s*$|\s+[-–]|\s+(?:for|with|and|please|i|we))/i) ||
+      message.match(/\b(?:in|to|at|for|visit(?:ing)?)\s+([a-zA-Z][a-zA-Z\s]{1,20}?)(?=[,.]|\s*$|\s+[-–]|\s+(?:for|with|and|please|i|we|to))/i) ||
+      message.match(/(?:מסעדות?|בתי קפה|מלונות?|ברים|אטרקציות?|מקומות?)\s+ב([\u0590-\u05FF][\u0590-\u05FF\s]{1,20}?)(?=[,.]|\s*$)/u) ||
+      message.match(/(?:^|\s)ב([\u0590-\u05FF][\u0590-\u05FF\s]{1,20}?)(?=[,.]|\s*$|\s+[-–])/u);
     const cityFromMessage = messageCityMatch ? messageCityMatch[1].trim() : null;
-    // Give explicit city in the message priority over the session/map city
-    let resolvedCity = cityFromMessage || city;
+    const resolvedCity = cityFromMessage || city;
 
-    // ── Build Prompt Based on Intent ──────────────────────────────────────
-    let prompt;
+    const isHebrew = /[\u0590-\u05FF]/.test(message);
 
-    if (isMultiDayRequest) {
-      // ── MODE 1: Multi-day trip itinerary ──
-      const dayCount = (message.match(/\b(\d+)[\s-]*days?\b/i) || [])[1] || 'several';
-      prompt = `You are an expert travel agent creating a complete trip itinerary${
-        resolvedCity ? ` for ${resolvedCity}` : ''
-      }.
-The user asked: "${message}"
+    console.log(`[Chat] ${resolvedCity || 'Unknown'} - "${message}" (stream)`);
 
-RULES:
-1. Create a detailed day-by-day itinerary for ${dayCount} days.
-2. Start EACH day with: [DAY: Day X - Theme Title]
-3. For EVERY place (breakfast spots, attractions, restaurants, bars, hotels) use EXACTLY:
-   [PLACE: Name | Category | Description]
-4. Categories: Landmark, Restaurant, Shopping, Hotel, Nature, Entertainment, Museum, Beach, Nightlife, Adventure, Culture, Cafe
-5. Include 8-12 places per day: morning activity, lunch, afternoon activity/sights, dinner, optional evening spot.
-6. Add 1-2 narrative sentences before each place for context and travel tips.
-7. Plain text only — no markdown bold (**).${budgetNote}${vibeNote}
+    // ── SSE Headers ─────────────────────────────────────────────────────
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
 
-${conversationContext}
-Now create the full ${dayCount}-day itinerary:`;
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
-    } else if (isSpecificRecommendation) {
-      // ── MODE 2: Specific category/question recommendations ──
-      prompt = `You are a knowledgeable local travel guide${
-        resolvedCity ? ` for ${resolvedCity}` : ''
-      }.
-The user asked: "${message}"${budgetNote}${vibeNote}
+    // ── System Instruction (stable across requests → Gemini caches it) ─
+    const systemInstruction = `You are an expert AI travel agent and local guide.
 
-RULES:
-1. Start with 2-3 conversational intro sentences explaining your approach.
-2. Then list 12-20 highly relevant places.
-3. For EVERY place use EXACTLY: [PLACE: Name | Category | Description]
-4. Categories: Landmark, Restaurant, Shopping, Hotel, Nature, Entertainment, Museum, Beach, Nightlife, Adventure, Culture, Cafe
-5. Group places under short plain-text subheadings (e.g. "Traditional & Local:" or "Best Value Picks:").
-6. Each description: 1-2 sentences explaining why this place matches the request.
-7. DO NOT use [DAY:...] markers. Plain text only — no markdown bold (**).
-8. Only recommend places in${resolvedCity ? ` ${resolvedCity}` : ' the city the user asked about'}.
+CRITICAL FORMAT RULE:
+Every time you mention a specific place (restaurant, hotel, attraction, bar, cafe, museum, park, etc.), you MUST wrap it in this exact tag:
+[PLACE: Place Name | Category | Description (1-2 sentences)]
 
-${conversationContext}
-Your recommendations:`;
+Never write a place name without the [PLACE:] tag. This is mandatory — the app uses these tags to let users add places to their map.
 
-    } else {
-      // ── MODE 3: General travel question / conversation ──
-      prompt = `You are a friendly and knowledgeable travel expert${
-        resolvedCity ? ` specializing in ${resolvedCity}` : ''
-      }.
-The user asked: "${message}"
-
-Answer helpfully and conversationally. If you naturally mention specific places worth visiting, format each as:
-[PLACE: Name | Category | Short description]
 Categories: Landmark, Restaurant, Shopping, Hotel, Nature, Entertainment, Museum, Beach, Nightlife, Adventure, Culture, Cafe
 
-Plain text only — no markdown bold (**). Do NOT use [DAY:...] markers.
-${conversationContext}
-Your answer:`;
-    }
+EXAMPLE (restaurants in Rome):
+Rome has a wonderful food scene. Here are my top picks.
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
+Authentic Italian:
+
+[PLACE: Da Enzo al 29 | Restaurant | A beloved Trastevere trattoria famous for its cacio e pepe and seasonal Roman dishes.]
+
+[PLACE: Roscioli | Restaurant | Part deli, part restaurant — exceptional pasta and an incredible wine cellar.]
+
+RESPONSE MODES (pick based on the user's message):
+1. MULTI-DAY TRIP / ITINERARY — Start each day with [DAY: Day X - Theme Title], include 8-12 [PLACE:] per day.
+2. SPECIFIC RECOMMENDATIONS — 2-3 intro sentences, then 12-20 [PLACE:] grouped under subheadings. No [DAY:] markers.
+3. GENERAL QUESTION — Conversational answer. Use [PLACE:] for any specific places mentioned.
+
+Rules:
+- Plain text only — no markdown (no **, ##, or * bullets)
+- Only recommend real, existing places
+- For budget requests include approximate price ranges
+- For luxury requests mention awards or accolades${isHebrew ? '\n- Reply entirely in Hebrew but keep [PLACE:] and [DAY:] markers in English so the app can parse them.' : ''}`;
+
+    // ── Build multi-turn Content[] (last 10 messages for cost control) ──
+    const recentHistory = conversationHistory.slice(-10);
+    const contents = recentHistory.map(msg => ({
+      role: msg.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: msg.content }]
+    }));
+    const userText = resolvedCity ? `[City: ${resolvedCity}] ${message}` : message;
+    contents.push({ role: 'user', parts: [{ text: userText }] });
+
+    // ── Stream response ─────────────────────────────────────────────────
+    const stream = await ai.models.generateContentStream({
+      model: "gemini-2.5-flash-lite",
+      contents,
       config: {
+        systemInstruction,
         temperature: 0.8,
-        topK: 40,
-        topP: 0.95,
         maxOutputTokens: 8000
-      },
+      }
     });
 
-    const aiResponse = response.text || "";
-    console.log(`[Chat] AI responded (${aiResponse.length} chars)`);
-
-    // Extract days and places structure
-    const dayRegex = /\[DAY:\s*([^\]]+)\]/g;
-    const placeRegex = /\[PLACE:\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^\]]+)\]/g;
-    
-    // Find all day markers
-    const dayMatches = [];
-    let dayMatch;
-    while ((dayMatch = dayRegex.exec(aiResponse)) !== null) {
-      dayMatches.push({
-        title: dayMatch[1].trim(),
-        index: dayMatch.index,
-        endIndex: dayMatch.index + dayMatch[0].length
-      });
+    let fullText = '';
+    for await (const chunk of stream) {
+      const text = chunk.text || '';
+      if (text) {
+        fullText += text;
+        res.write(`data: ${JSON.stringify({ type: 'chunk', text })}\n\n`);
+      }
     }
 
-    // Structure to hold day-grouped places
+    // ── Parse structured data from completed response ───────────────────
+    const dayRegex = /\[DAY:\s*([^\]]+)\]/g;
+    const placeRegex = /\[PLACE:\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^\]]+)\]/g;
+
+    const dayMatches = [];
+    let dayMatch;
+    while ((dayMatch = dayRegex.exec(fullText)) !== null) {
+      dayMatches.push({ title: dayMatch[1].trim(), index: dayMatch.index, endIndex: dayMatch.index + dayMatch[0].length });
+    }
+
     const dayGroups = [];
-    
     if (dayMatches.length > 0) {
-      // Process each day section
       for (let i = 0; i < dayMatches.length; i++) {
         const currentDay = dayMatches[i];
-        const nextDay = dayMatches[i + 1];
-        const sectionStart = currentDay.endIndex;
-        const sectionEnd = nextDay ? nextDay.index : aiResponse.length;
-        const daySection = aiResponse.substring(sectionStart, sectionEnd);
-        
-        // Extract text without place markers for this day
+        const sectionEnd = dayMatches[i + 1] ? dayMatches[i + 1].index : fullText.length;
+        const daySection = fullText.substring(currentDay.endIndex, sectionEnd);
         const dayText = daySection.replace(placeRegex, '').trim();
-        
-        // Extract places for this day
         const dayPlaces = [];
-        placeRegex.lastIndex = 0; // Reset regex
+        placeRegex.lastIndex = 0;
         let placeMatch;
         while ((placeMatch = placeRegex.exec(daySection)) !== null) {
           dayPlaces.push({
-            title: placeMatch[1].trim(),
-            category: placeMatch[2].trim(),
-            description: placeMatch[3].trim(),
-            city: resolvedCity || undefined,
-            needsEnrichment: true,
-            lat: undefined,
-            lng: undefined,
-            rating: undefined
+            title: placeMatch[1].trim(), category: placeMatch[2].trim(), description: placeMatch[3].trim(),
+            city: resolvedCity || undefined, needsEnrichment: true
           });
         }
-        
-        dayGroups.push({
-          dayTitle: currentDay.title,
-          dayText: dayText,
-          places: dayPlaces
-        });
+        dayGroups.push({ dayTitle: currentDay.title, dayText, places: dayPlaces });
       }
     } else {
-      // No day markers found - treat as single response
       const places = [];
-      let match;
       placeRegex.lastIndex = 0;
-      while ((match = placeRegex.exec(aiResponse)) !== null) {
+      let match;
+      while ((match = placeRegex.exec(fullText)) !== null) {
         places.push({
-          title: match[1].trim(),
-          category: match[2].trim(),
-          description: match[3].trim(),
-          city: resolvedCity || undefined,
-          needsEnrichment: true,
-          lat: undefined,
-          lng: undefined,
-          rating: undefined
+          title: match[1].trim(), category: match[2].trim(), description: match[3].trim(),
+          city: resolvedCity || undefined, needsEnrichment: true
         });
       }
-      
       if (places.length > 0) {
-        dayGroups.push({
-          dayTitle: 'Recommendations',
-          dayText: '', // Empty to avoid duplication with cleanIntro
-          places: places
-        });
+        dayGroups.push({ dayTitle: 'Recommendations', dayText: '', places });
       }
     }
 
-    // Get intro text (everything before first [DAY:] marker)
-    const firstDayIndex = dayMatches.length > 0 ? dayMatches[0].index : aiResponse.length;
-    const introText = aiResponse.substring(0, firstDayIndex).trim();
-    
-    // Replace markers with just the place names to keep text readable
-    const cleanIntro = introText
-      .replace(placeRegex, (match, name) => name.trim())
-      .replace(dayRegex, '')
-      .replace(/\*/g, '')  // Remove all markdown formatting (*, **)
+    const firstDayIndex = dayMatches.length > 0 ? dayMatches[0].index : fullText.length;
+    const cleanIntro = fullText.substring(0, firstDayIndex).trim()
+      .replace(/\[PLACE:\s*([^|]+)\s*\|[^\]]*\]/g, (_, name) => name.trim())
+      .replace(/\[DAY:[^\]]*\]/g, '')
+      .replace(/\*/g, '')
       .trim();
 
     const totalPlaces = dayGroups.reduce((sum, day) => sum + day.places.length, 0);
-    console.log(`[Chat] Extracted ${totalPlaces} places across ${dayGroups.length} day(s)`);
+    console.log(`[Chat] Extracted ${totalPlaces} places across ${dayGroups.length} group(s)`);
 
-    // Extract city from response if not provided (look for city name in places or message)
     let responseCity = resolvedCity || city;
     if (!responseCity && totalPlaces > 0) {
-      // Try to extract city from the first place or the response
-      const cityMatch = aiResponse.match(/\b(?:in|to|visiting)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/);
-      responseCity = cityMatch ? cityMatch[1] : '';
+      const cityMatch2 = fullText.match(/\b(?:in|to|visiting)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/);
+      responseCity = cityMatch2 ? cityMatch2[1] : '';
     }
 
-    res.json({
-      response: cleanIntro,
-      dayGroups: dayGroups,
-      city: responseCity
-    });
+    // ── Send final structured data ──────────────────────────────────────
+    res.write(`data: ${JSON.stringify({ type: 'done', response: cleanIntro, dayGroups, city: responseCity })}\n\n`);
+    res.end();
 
   } catch (error) {
     console.error('Gemini Chat Error:', error);
-    res.status(500).json({
-      error: 'Chat failed',
-      message: error.message || 'An error occurred while processing your message'
-    });
+    if (res.headersSent) {
+      res.write(`data: ${JSON.stringify({ type: 'error', message: error.message || 'Chat failed' })}\n\n`);
+      res.end();
+    } else {
+      res.status(500).json({ error: 'Chat failed', message: error.message || 'An error occurred' });
+    }
   }
 });
 

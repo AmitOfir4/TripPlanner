@@ -79,7 +79,7 @@ const ModalContent: React.FC<ModalContentProps> = ({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+        <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
       </div>
     );
   }
@@ -125,21 +125,21 @@ const MapsList: React.FC<MapsListProps> = ({ maps, importing, onSelectMap }) => 
         key={map.id}
         onClick={() => onSelectMap(map)}
         disabled={importing}
-        className="w-full p-5 bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-600 rounded-2xl transition-all text-left group disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full p-5 bg-slate-50 hover:bg-teal-50 border border-slate-200 hover:border-teal-500 rounded-2xl transition-all text-left group disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center shrink-0">
-            <MapIcon className="w-6 h-6 text-indigo-600" />
+          <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center shrink-0">
+            <MapIcon className="w-6 h-6 text-teal-600" />
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
+            <h3 className="font-bold text-slate-900 group-hover:text-teal-600 transition-colors">
               {map.name}
             </h3>
             <p className="text-xs text-slate-500 mt-1">
               Modified: {new Date(map.modifiedTime).toLocaleDateString()}
             </p>
           </div>
-          <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-indigo-600 transition-colors shrink-0" />
+          <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-teal-600 transition-colors shrink-0" />
         </div>
       </button>
     ))}
@@ -159,7 +159,7 @@ const FileUploadSection: React.FC<FileUploadSectionProps> = ({ onFileUpload }) =
         onChange={onFileUpload}
         className="hidden"
       />
-      <div className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-2xl flex items-center justify-center gap-3 transition-all shadow-lg cursor-pointer">
+      <div className="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-4 px-6 rounded-2xl flex items-center justify-center gap-3 transition-all shadow-lg cursor-pointer">
         <Upload className="w-5 h-5" />
         <span>Upload KML File</span>
       </div>

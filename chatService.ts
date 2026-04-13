@@ -12,44 +12,72 @@ interface ChatResponse {
   city: string;
 }
 
-// Send a chat message to the AI travel agent
+// Send a chat message and stream the response via SSE
 export const sendChatMessage = async (
   city: string,
   message: string,
   apiKey: string,
-  conversationHistory: ChatMessage[] = []
+  conversationHistory: ChatMessage[] = [],
+  onChunk?: (text: string) => void
 ): Promise<ChatResponse> => {
-  try {
-    const response = await fetch(CHAT_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        city,
-        message,
-        apiKey,
-        conversationHistory: conversationHistory.map(msg => ({
-          role: msg.role,
-          content: msg.content
-        }))
-      })
-    });
+  const response = await fetch(CHAT_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      city,
+      message,
+      apiKey,
+      conversationHistory: conversationHistory.slice(-10).map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }))
+    })
+  });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return {
-      response: data.response || '',
-      dayGroups: data.dayGroups,
-      places: data.places || [],
-      city: data.city || city
-    };
-  } catch (error) {
-    console.error('Error sending chat message:', error);
-    throw error;
+  if (!response.ok) {
+    // Non-streaming error (headers not yet switched to SSE)
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
   }
+
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let result: ChatResponse = { response: '', dayGroups: [], places: [], city };
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split('\n\n');
+    buffer = events.pop() || ''; // keep incomplete event in buffer
+
+    for (const event of events) {
+      const trimmed = event.trim();
+      if (!trimmed.startsWith('data: ')) continue;
+
+      try {
+        const data = JSON.parse(trimmed.slice(6));
+        if (data.type === 'chunk' && onChunk) {
+          onChunk(data.text);
+        } else if (data.type === 'done') {
+          const allPlaces = data.dayGroups?.flatMap((g: DayGroup) => g.places) || [];
+          result = {
+            response: data.response || '',
+            dayGroups: data.dayGroups || [],
+            places: allPlaces,
+            city: data.city || city
+          };
+        } else if (data.type === 'error') {
+          throw new Error(data.message);
+        }
+      } catch (e) {
+        if (e instanceof SyntaxError) continue; // skip malformed JSON chunk
+        throw e;
+      }
+    }
+  }
+
+  return result;
 };
