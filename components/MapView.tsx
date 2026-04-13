@@ -31,6 +31,7 @@ interface MapViewProps {
   onMarkerClick?: (place: TripRecommendation) => void;
   onAddPlace?: (place: TripRecommendation) => void;
   onRemovePlace?: (place: TripRecommendation) => void;
+  onUpdatePlace?: (updated: TripRecommendation) => void;
 }
 
 // Component to handle geocoding and map centering
@@ -121,7 +122,8 @@ export const MapView: React.FC<MapViewProps> = ({
   userLocation,
   onMarkerClick,
   onAddPlace,
-  onRemovePlace
+  onRemovePlace,
+  onUpdatePlace
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<TripRecommendation | null>(null);
@@ -135,6 +137,7 @@ export const MapView: React.FC<MapViewProps> = ({
   const [searchResults, setSearchResults] = useState<google.maps.GeocoderResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isAddingToTrip, setIsAddingToTrip] = useState(false);
+  const [editingIconForPlace, setEditingIconForPlace] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [collapsedLayers, setCollapsedLayers] = useState<Set<string>>(new Set());
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -452,6 +455,7 @@ export const MapView: React.FC<MapViewProps> = ({
               gestureHandling="greedy"
               disableDefaultUI={false}
               keyboardShortcuts={false}
+              clickableIcons={false}
               className="w-full h-full"
               onClick={(e) => {
                 // Handle map click — defer geocoding until user adds to trip
@@ -592,9 +596,41 @@ export const MapView: React.FC<MapViewProps> = ({
                       ? { lat: geocodedFocusedPlace.lat, lng: geocodedFocusedPlace.lng }
                       : geocodedSavedPlaces[selectedPlace.title] || undefined
                   }
-                  onCloseClick={() => setSelectedPlace(null)}
+                  onCloseClick={() => {
+                    setSelectedPlace(null);
+                    setEditingIconForPlace(null);
+                  }}
                 >
-                  <div className="p-2 max-w-xs">
+                  <div className="p-2 max-w-xs -mt-3">
+                    {/* Icon above title — click to change */}
+                    {isPlaceSaved(selectedPlace) && onUpdatePlace && (
+                      <div className="mb-1">
+                        <button
+                          onClick={() => setEditingIconForPlace(
+                            editingIconForPlace === selectedPlace.title ? null : selectedPlace.title
+                          )}
+                          className="mb-1 self-start hover:scale-110 transition-transform"
+                          title="Click to change icon"
+                        >
+                          <img
+                            src={AVAILABLE_KML_ICONS.find(i => i.id === (selectedPlace.customKmlIcon || getDefaultKmlIcon(selectedPlace.category)))?.url || AVAILABLE_KML_ICONS[0].url}
+                            alt="icon"
+                            className="w-6 h-6"
+                          />
+                        </button>
+                        {editingIconForPlace === selectedPlace.title && (
+                          <KmlIconSelector
+                            currentIconId={selectedPlace.customKmlIcon || getDefaultKmlIcon(selectedPlace.category)}
+                            onIconChange={(iconId) => {
+                              const updated = { ...selectedPlace, customKmlIcon: iconId };
+                              onUpdatePlace(updated);
+                              setSelectedPlace(updated);
+                              setEditingIconForPlace(null);
+                            }}
+                          />
+                        )}
+                      </div>
+                    )}
                     <h4 className="font-bold text-sm text-slate-900 mb-1">
                       {selectedPlace.title}
                     </h4>

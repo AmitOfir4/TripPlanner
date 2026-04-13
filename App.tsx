@@ -281,6 +281,15 @@ const App: React.FC = () => {
     }
   };
 
+  const handleUpdatePlaceFromMap = (updated: TripRecommendation) => {
+    setSavedLayers(prev =>
+      prev.map(layer => ({
+        ...layer,
+        places: layer.places.map(p => p.title === updated.title ? updated : p)
+      }))
+    );
+  };
+
   const handleViewInMap = (place: TripRecommendation) => {
     setFocusedPlace(place);
     // Scroll to map view with smooth animation
@@ -356,6 +365,7 @@ const App: React.FC = () => {
                   userLocation={userLocation ? { lat: userLocation.latitude, lng: userLocation.longitude } : null}
                   onAddPlace={savePlace}
                   onRemovePlace={handleRemovePlaceFromMap}
+                  onUpdatePlace={handleUpdatePlaceFromMap}
                 />
               </div>
             </div>
