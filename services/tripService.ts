@@ -2,6 +2,7 @@
 import { TripData, TripLayer } from '../types';
 import { generateKml, downloadFile } from '../utils';
 import { uploadKMLToDrive } from '../googleDriveService';
+import { geocodeAddress } from './geocodeService';
 
 export class TripService {
   static createTripData(savedLayers: TripLayer[]): TripData {
@@ -27,8 +28,6 @@ export class TripService {
   }
 
   static async geocodePlacesIfNeeded(layers: TripLayer[], cityName: string): Promise<TripLayer[]> {
-    const geocoder = new google.maps.Geocoder();
-    
     const enrichedLayers = await Promise.all(
       layers.map(async (layer) => {
         const enrichedPlaces = await Promise.all(
@@ -44,22 +43,13 @@ export class TripService {
             const geocodeCity = place.city || layer.name || cityName;
             try {
               const searchQuery = `${place.title}, ${geocodeCity}`;
-              const results = await new Promise<google.maps.GeocoderResult[]>((resolve, reject) => {
-                geocoder.geocode({ address: searchQuery }, (results, status) => {
-                  if (status === 'OK' && results) {
-                    resolve(results);
-                  } else {
-                    reject(new Error(`Geocoding failed for ${place.title}`));
-                  }
-                });
-              });
+              const result = await geocodeAddress(searchQuery);
               
-              if (results && results[0]) {
-                const location = results[0].geometry.location;
+              if (result) {
                 return {
                   ...place,
-                  lat: location.lat(),
-                  lng: location.lng()
+                  lat: result.lat,
+                  lng: result.lng
                 };
               }
             } catch (error) {

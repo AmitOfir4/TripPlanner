@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
+import { neon } from '@neondatabase/serverless';
 
 dotenv.config();
 
@@ -558,6 +559,115 @@ Rules:
     } else {
       res.status(500).json({ error: 'Chat failed', message: error.message || 'An error occurred' });
     }
+  }
+});
+
+// Geocode endpoint with Postgres cache
+app.post('/api/geocode', async (req, res) => {
+  const { address, lat, lng } = req.body;
+  const isReverse = typeof lat === 'number' && typeof lng === 'number' && !address;
+
+  if (!address && !isReverse) {
+    return res.status(400).json({ error: 'Provide either "address" or "lat"+"lng"' });
+  }
+
+  const mapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!mapsApiKey) {
+    return res.status(500).json({ error: 'Server missing GOOGLE_MAPS_API_KEY' });
+  }
+
+  const CACHE_TTL_DAYS = 365;
+
+  const normalizeForwardKey = (addr) => `fwd:${addr.toLowerCase().trim()}`;
+  const normalizeReverseKey = (lt, ln) => `rev:${lt.toFixed(4)},${ln.toFixed(4)}`;
+
+  const geocodeForward = async (addr, key) => {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addr)}&key=${key}`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (data.status === 'OK' && data.results?.[0]) {
+      const r = data.results[0];
+      const placeName = r.address_components?.find(c => c.long_name.length > 2)?.long_name || r.formatted_address || '';
+      return { lat: r.geometry.location.lat, lng: r.geometry.location.lng, formatted_address: r.formatted_address || '', place_name: placeName };
+    }
+    return null;
+  };
+
+  const geocodeReverse = async (lt, ln, key) => {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lt},${ln}&key=${key}`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (data.status === 'OK' && data.results?.[0]) {
+      const r = data.results[0];
+      const placeName = r.address_components?.find(c => c.long_name.length > 2)?.long_name || r.formatted_address || '';
+      return { lat: lt, lng: ln, formatted_address: r.formatted_address || '', place_name: placeName };
+    }
+    return null;
+  };
+
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    console.warn('[Geocode] No DATABASE_URL — skipping cache');
+    const result = isReverse
+      ? await geocodeReverse(lat, lng, mapsApiKey)
+      : await geocodeForward(address, mapsApiKey);
+    if (!result) return res.status(404).json({ error: 'Geocoding returned no results' });
+    return res.json({ ...result, cached: false });
+  }
+
+  try {
+    const sql = neon(databaseUrl);
+    await sql`
+      CREATE TABLE IF NOT EXISTS geocode_cache (
+        id SERIAL PRIMARY KEY,
+        query_key TEXT UNIQUE NOT NULL,
+        query_type TEXT NOT NULL DEFAULT 'forward',
+        lat DOUBLE PRECISION,
+        lng DOUBLE PRECISION,
+        formatted_address TEXT,
+        place_name TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `;
+
+    const queryKey = isReverse ? normalizeReverseKey(lat, lng) : normalizeForwardKey(address);
+
+    const cached = await sql`
+      SELECT lat, lng, formatted_address, place_name
+      FROM geocode_cache
+      WHERE query_key = ${queryKey}
+        AND created_at > NOW() - INTERVAL '365 days'
+      LIMIT 1
+    `;
+
+    if (cached.length > 0) {
+      console.log(`[Geocode] Cache HIT: ${queryKey}`);
+      return res.json({ ...cached[0], cached: true });
+    }
+
+    console.log(`[Geocode] Cache MISS: ${queryKey}`);
+    const result = isReverse
+      ? await geocodeReverse(lat, lng, mapsApiKey)
+      : await geocodeForward(address, mapsApiKey);
+    if (!result) return res.status(404).json({ error: 'Geocoding returned no results' });
+
+    await sql`
+      INSERT INTO geocode_cache (query_key, query_type, lat, lng, formatted_address, place_name)
+      VALUES (${queryKey}, ${isReverse ? 'reverse' : 'forward'}, ${result.lat}, ${result.lng}, ${result.formatted_address}, ${result.place_name})
+      ON CONFLICT (query_key) DO UPDATE SET
+        lat = EXCLUDED.lat, lng = EXCLUDED.lng,
+        formatted_address = EXCLUDED.formatted_address, place_name = EXCLUDED.place_name,
+        created_at = NOW()
+    `;
+
+    return res.json({ ...result, cached: false });
+  } catch (error) {
+    console.error('[Geocode] Error:', error);
+    const result = isReverse
+      ? await geocodeReverse(lat, lng, mapsApiKey)
+      : await geocodeForward(address, mapsApiKey);
+    if (!result) return res.status(404).json({ error: 'Geocoding returned no results' });
+    return res.json({ ...result, cached: false });
   }
 });
 

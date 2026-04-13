@@ -5,6 +5,7 @@ import { MapPin, Maximize2, Minimize2, Star, ExternalLink, Search, Edit2, Check,
 import { TripRecommendation, TripLayer } from '../types';
 import { AVAILABLE_KML_ICONS, KML_ICON_STYLES, CATEGORY_RULES } from '../constants';
 import { KmlIconSelector } from './KmlIconSelector';
+import { geocodeAddress, reverseGeocode } from '../services/geocodeService';
 
 // Helper to get default icon for a category
 const getDefaultKmlIcon = (category: string): string => {
@@ -57,12 +58,10 @@ const MapController: React.FC<{
         map.panTo({ lat: selectedPlace.lat, lng: selectedPlace.lng });
         map.setZoom(15);
       } else {
-        const geocoder = new google.maps.Geocoder();
         const searchQuery = `${selectedPlace.title}, ${selectedPlace.city || city}`;
-        geocoder.geocode({ address: searchQuery }, (results, status) => {
-          if (status === 'OK' && results && results[0]) {
-            const location = results[0].geometry.location;
-            map.panTo({ lat: location.lat(), lng: location.lng() });
+        geocodeAddress(searchQuery).then(result => {
+          if (result) {
+            map.panTo({ lat: result.lat, lng: result.lng });
             map.setZoom(15);
           }
         });
@@ -78,12 +77,10 @@ const MapController: React.FC<{
         map.setZoom(15);
       } else {
         // No coordinates - geocode the place name using the place's own city if available
-        const geocoder = new google.maps.Geocoder();
         const searchQuery = `${focusedPlace.title}, ${focusedPlace.city || city}`;
-        geocoder.geocode({ address: searchQuery }, (results, status) => {
-          if (status === 'OK' && results && results[0]) {
-            const location = results[0].geometry.location;
-            map.panTo({ lat: location.lat(), lng: location.lng() });
+        geocodeAddress(searchQuery).then(result => {
+          if (result) {
+            map.panTo({ lat: result.lat, lng: result.lng });
             map.setZoom(15);
           }
         });
@@ -101,11 +98,9 @@ const MapController: React.FC<{
 
     // Otherwise, geocode the city name only if we have places (search was performed)
     if (!geocodedCenter && places.length > 0 && city !== lastGeocodedCity) {
-      const geocoder = new google.maps.Geocoder();
-      geocoder.geocode({ address: city }, (results, status) => {
-        if (status === 'OK' && results && results[0]) {
-          const location = results[0].geometry.location;
-          const center = { lat: location.lat(), lng: location.lng() };
+      geocodeAddress(city).then(result => {
+        if (result) {
+          const center = { lat: result.lat, lng: result.lng };
           setGeocodedCenter(center);
           setLastGeocodedCity(city);
           map.setCenter(center);
@@ -139,7 +134,9 @@ export const MapView: React.FC<MapViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<google.maps.GeocoderResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isAddingToTrip, setIsAddingToTrip] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const geocodingInFlightRef = useRef<Set<string>>(new Set());
   
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -207,18 +204,13 @@ export const MapView: React.FC<MapViewProps> = ({
       
       // If focused place doesn't have coordinates, geocode it
       if (!focusedPlace.lat || !focusedPlace.lng) {
-        // Check if Google Maps API is loaded
-        if (typeof google === 'undefined' || !google.maps) return;
-        
-        const geocoder = new google.maps.Geocoder();
         const searchQuery = `${focusedPlace.title}, ${focusedPlace.city || city}`;
-        geocoder.geocode({ address: searchQuery }, (results, status) => {
-          if (status === 'OK' && results && results[0]) {
-            const location = results[0].geometry.location;
+        geocodeAddress(searchQuery).then(result => {
+          if (result) {
             setGeocodedFocusedPlace({
               place: focusedPlace,
-              lat: location.lat(),
-              lng: location.lng()
+              lat: result.lat,
+              lng: result.lng
             });
           }
         });
@@ -230,9 +222,6 @@ export const MapView: React.FC<MapViewProps> = ({
 
   // Geocode saved places without coordinates
   useEffect(() => {
-    // Check if Google Maps API is fully loaded
-    if (!apiKey || typeof google === 'undefined' || !google.maps || !google.maps.Geocoder) return;
-    
     const placesNeedingGeocoding = savedLayers.flatMap(layer =>
       layer.places
         .filter(p => !p.lat || !p.lng)
@@ -241,31 +230,25 @@ export const MapView: React.FC<MapViewProps> = ({
     
     if (placesNeedingGeocoding.length === 0) return;
 
-    try {
-      const geocoder = new google.maps.Geocoder();
-    
-      placesNeedingGeocoding.forEach(({ place, layerCity }) => {
-        // Skip if already geocoded
-        if (geocodedSavedPlaces[place.title]) return;
-        
-        // Use the place's own city, then the layer name (= city for AI searches),
-        // then fall back to the session city prop.
-        const geocodeCity = place.city || layerCity || city;
-        const searchQuery = `${place.title}, ${geocodeCity}`;
-        geocoder.geocode({ address: searchQuery }, (results, status) => {
-          if (status === 'OK' && results && results[0]) {
-            const location = results[0].geometry.location;
-            setGeocodedSavedPlaces(prev => ({
-              ...prev,
-              [place.title]: { lat: location.lat(), lng: location.lng() }
-            }));
-          }
-        });
+    placesNeedingGeocoding.forEach(({ place, layerCity }) => {
+      // Skip if already geocoded or in-flight
+      if (geocodingInFlightRef.current.has(place.title)) return;
+      geocodingInFlightRef.current.add(place.title);
+      
+      // Use the place's own city, then the layer name (= city for AI searches),
+      // then fall back to the session city prop.
+      const geocodeCity = place.city || layerCity || city;
+      const searchQuery = `${place.title}, ${geocodeCity}`;
+      geocodeAddress(searchQuery).then(result => {
+        if (result) {
+          setGeocodedSavedPlaces(prev => ({
+            ...prev,
+            [place.title]: { lat: result.lat, lng: result.lng }
+          }));
+        }
       });
-    } catch (error) {
-      console.error('Error initializing geocoder:', error);
-    }
-  }, [savedLayers, city, geocodedSavedPlaces, apiKey]);
+    });
+  }, [savedLayers, city]);
 
   // Filter places that have coordinates
   const placesWithCoords = places.filter(p => p.lat && p.lng);
@@ -364,23 +347,15 @@ export const MapView: React.FC<MapViewProps> = ({
               keyboardShortcuts={false}
               className="w-full h-full"
               onClick={(e) => {
-                // Handle map click to get place information
+                // Handle map click — defer geocoding until user adds to trip
                 if (e.detail.latLng) {
                   const lat = e.detail.latLng.lat;
                   const lng = e.detail.latLng.lng;
-                  
-                  // Reverse geocode to get place name
-                  const geocoder = new google.maps.Geocoder();
-                  geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-                    if (status === 'OK' && results && results[0]) {
-                      const placeName = results[0].address_components[0]?.long_name || results[0].formatted_address;
-                      setClickedLocation({ lat, lng, name: placeName });
-                      setCustomPlaceName(placeName);
-                      setCustomPlaceIcon('icon-camera');
-                      setIsEditingName(false);
-                      setSelectedPlace(null); // Clear any existing selection
-                    }
-                  });
+                  setClickedLocation({ lat, lng });
+                  setCustomPlaceName('');
+                  setCustomPlaceIcon('icon-camera');
+                  setIsEditingName(false);
+                  setSelectedPlace(null);
                 }
               }}
             >
@@ -484,21 +459,6 @@ export const MapView: React.FC<MapViewProps> = ({
                   );
                 })
               }
-
-              {/* Render temporary marker for geocoded focused place without coordinates */}
-              {geocodedFocusedPlace && (
-                <AdvancedMarker
-                  position={{ lat: geocodedFocusedPlace.lat, lng: geocodedFocusedPlace.lng }}
-                  onClick={() => setSelectedPlace(geocodedFocusedPlace.place)}
-                >
-                  <Pin
-                    background="#4f46e5"
-                    borderColor="#312e81"
-                    glyphColor="#ffffff"
-                    scale={1.3}
-                  />
-                </AdvancedMarker>
-              )}
 
               {/* Marker for clicked location on map */}
               {clickedLocation && (
@@ -656,24 +616,31 @@ export const MapView: React.FC<MapViewProps> = ({
                     {/* Add to Trip Button */}
                     {onAddPlace && (
                       <button
-                        onClick={() => {
+                        disabled={isAddingToTrip}
+                        onClick={async () => {
+                          setIsAddingToTrip(true);
+                          let name = customPlaceName.trim();
+                          if (!name) {
+                            const result = await reverseGeocode(clickedLocation.lat, clickedLocation.lng);
+                            name = result?.place_name || `${clickedLocation.lat.toFixed(4)}, ${clickedLocation.lng.toFixed(4)}`;
+                          }
                           const newPlace: TripRecommendation = {
-                            title: customPlaceName || 'Custom Place',
+                            title: name,
                             description: `Custom location at ${clickedLocation.lat.toFixed(4)}, ${clickedLocation.lng.toFixed(4)}`,
                             category: 'Other',
                             lat: clickedLocation.lat,
                             lng: clickedLocation.lng,
-                            needsEnrichment: false,
                             customKmlIcon: customPlaceIcon
                           };
                           onAddPlace(newPlace);
                           setClickedLocation(null);
                           setIsEditingName(false);
+                          setIsAddingToTrip(false);
                         }}
-                        className="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-2"
+                        className="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-2"
                       >
                         <MapPin className="w-3 h-3" />
-                        Add to Trip
+                        {isAddingToTrip ? 'Adding...' : 'Add to Trip'}
                       </button>
                     )}
 
