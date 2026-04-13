@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Compass, Trash2, Upload, LogIn, User, Key, X, Check, Sparkles } from 'lucide-react';
+import { Compass, Trash2, Upload, LogIn, User, Key, X, Check, Sparkles, Languages } from 'lucide-react';
 import { GoogleUser } from '../googleAuthService';
 import { TRANSLATIONS } from '../constants';
 
@@ -7,6 +7,8 @@ interface HeaderProps {
   googleUser: GoogleUser | null;
   apiKey: string;
   hasApiKey: boolean;
+  language: 'en' | 'he';
+  onLanguageChange: (lang: 'en' | 'he') => void;
   onImportClick: () => void;
   onLogout: () => void;
   onReset: () => void;
@@ -18,6 +20,8 @@ export const Header: React.FC<HeaderProps> = ({
   googleUser,
   apiKey,
   hasApiKey,
+  language,
+  onLanguageChange,
   onImportClick,
   onLogout,
   onReset,
@@ -69,6 +73,16 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Actions */}
         <div className="flex items-center gap-2">
+          {/* Language Toggle */}
+          <button
+            onClick={() => onLanguageChange(language === 'en' ? 'he' : 'en')}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all bg-slate-50 text-slate-600 hover:bg-slate-100 ring-1 ring-slate-200"
+            title={language === 'en' ? 'Switch to Hebrew' : 'Switch to English'}
+          >
+            <Languages className="w-3.5 h-3.5" />
+            <span>{language === 'en' ? 'עב' : 'EN'}</span>
+          </button>
+
           {/* API Key Button */}
           <div className="relative">
             <button

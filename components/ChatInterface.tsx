@@ -21,6 +21,7 @@ interface ChatInterfaceProps {
   loading: boolean;
   messages: ChatMessage[];
   savedLayers: TripLayer[];
+  language: 'en' | 'he';
   onSendMessage: (message: string) => void;
   onAddPlace: (place: TripRecommendation) => void;
   onAddAll?: (places: TripRecommendation[]) => void;
@@ -31,6 +32,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   loading,
   messages,
   savedLayers,
+  language,
   onSendMessage,
   onAddPlace,
   onAddAll,
@@ -39,6 +41,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [inputMessage, setInputMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const isHebrew = language === 'he';
 
   // Helper to check if a place is already added
   const isPlaceAdded = (place: TripRecommendation): boolean => {
@@ -75,7 +79,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   };
 
   return (
-    <div className="chat-container flex flex-col h-full bg-white rounded-2xl border border-slate-200/80 shadow-xl shadow-slate-900/5 overflow-hidden">
+    <div dir={isHebrew ? 'rtl' : 'ltr'} className="chat-container flex flex-col h-full bg-white rounded-2xl border border-slate-200/80 shadow-xl shadow-slate-900/5 overflow-hidden">
       {/* Chat Header */}
       <div className="chat-header bg-gradient-to-br from-teal-600 via-teal-500 to-sky-500 px-5 py-4">
         <div className="flex items-center gap-3">
@@ -86,12 +90,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             </div>
           </div>
           <div>
-            <h2 className="text-base font-bold text-white leading-tight">AI Travel Expert</h2>
-            <p className="text-xs text-teal-100 font-medium">Your personal trip planner</p>
+            <h2 className="text-base font-bold text-white leading-tight">
+              {isHebrew ? 'מומחה נסיעות AI' : 'AI Travel Expert'}
+            </h2>
+            <p className="text-xs text-teal-100 font-medium">
+              {isHebrew ? 'מתכנן הטיולים האישי שלך' : 'Your personal trip planner'}
+            </p>
           </div>
-          <div className="ml-auto flex items-center gap-1.5">
+          <div className={`${isHebrew ? 'mr-auto' : 'ml-auto'} flex items-center gap-1.5`}>
             <span className="w-2 h-2 bg-emerald-400 rounded-full shadow-sm animate-pulse" />
-            <span className="text-[11px] text-teal-100 font-medium">Online</span>
+            <span className="text-[11px] text-teal-100 font-medium">{isHebrew ? 'מחובר' : 'Online'}</span>
           </div>
         </div>
       </div>
@@ -109,20 +117,29 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             </div>
 
             <div>
-              <h3 className="text-xl font-bold text-slate-900 mb-1.5">Plan Your Next Adventure</h3>
+              <h3 className="text-xl font-bold text-slate-900 mb-1.5">
+                {isHebrew ? 'תכנן את ההרפתקה הבאה שלך' : 'Plan Your Next Adventure'}
+              </h3>
               <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
-                Describe where you'd like to go — I'll build a personalised itinerary with must-see spots.
+                {isHebrew
+                  ? 'ספר לי לאן תרצה לטוס — אבנה מסלול מותאם אישית עם האטרקציות הכי שוות.'
+                  : "Describe where you'd like to go — I'll build a personalised itinerary with must-see spots."}
               </p>
             </div>
 
             {/* Suggestion chips */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full max-w-sm">
-              {[
+              {(isHebrew ? [
+                '✈️ טיול של 3 ימים בפריז',
+                '🍜 האוכל הכי טוב בטוקיו',
+                '👨‍👩‍👧 טיול משפחתי ברומא',
+                '🌊 הרפתקה בבאלי'
+              ] : [
                 '✈️ 3-day trip to Paris',
                 '🍜 Best food in Tokyo',
                 '👨‍👩‍👧 Family trip to Rome',
                 '🌊 Adventure in Bali'
-              ].map((suggestion, idx) => (
+              ]).map((suggestion, idx) => (
                 <button
                   key={idx}
                   onClick={() => setInputMessage(suggestion.replace(/^.+?\s/, ''))}
@@ -180,7 +197,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                             className="w-full px-4 py-2.5 bg-gradient-to-r from-teal-600 to-sky-600 hover:from-teal-700 hover:to-sky-700 text-white rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 shadow-md shadow-teal-200"
                           >
                             <ListPlus className="w-4 h-4" />
-                            Add All {allAvailablePlaces.length} Places
+                            {isHebrew ? `הוסף את כל ${allAvailablePlaces.length} המקומות` : `Add All ${allAvailablePlaces.length} Places`}
                           </button>
                         )}
 
@@ -197,6 +214,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                                     place={place}
                                     onAdd={() => onAddPlace(place)}
                                     onShowInMap={onShowInMap ? () => onShowInMap(place) : undefined}
+                                    isHebrew={isHebrew}
                                   />
                                 ))}
                               </div>
@@ -231,6 +249,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                                       place={place}
                                       onAdd={() => onAddPlace(place)}
                                       onShowInMap={onShowInMap ? () => onShowInMap(place) : undefined}
+                                      isHebrew={isHebrew}
                                     />
                                   ))}
                                 </div>
@@ -254,7 +273,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                             className="w-full px-4 py-2.5 bg-gradient-to-r from-teal-600 to-sky-600 hover:from-teal-700 hover:to-sky-700 text-white rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 shadow-md shadow-teal-200 mb-1"
                           >
                             <ListPlus className="w-4 h-4" />
-                            Add All {availablePlaces.length} Places
+                            {isHebrew ? `הוסף את כל ${availablePlaces.length} המקומות` : `Add All ${availablePlaces.length} Places`}
                           </button>
                         )}
                         {availablePlaces.map((place, idx) => (
@@ -263,6 +282,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                             place={place}
                             onAdd={() => onAddPlace(place)}
                             onShowInMap={onShowInMap ? () => onShowInMap(place) : undefined}
+                            isHebrew={isHebrew}
                           />
                         ))}
                       </div>
@@ -302,7 +322,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           <input
             ref={inputRef}
             type="text"
-            placeholder="e.g. 3-day trip to Paris, best food in Milan…"
+            placeholder={isHebrew ? 'למשל: טיול של 3 ימים בפריז, האוכל הכי טוב במילאנו...' : 'e.g. 3-day trip to Paris, best food in Milan…'}
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyPress={handleKeyPress}
@@ -328,9 +348,10 @@ interface PlaceChipProps {
   place: import('../types').TripRecommendation;
   onAdd: () => void;
   onShowInMap?: () => void;
+  isHebrew?: boolean;
 }
 
-const PlaceChip: React.FC<PlaceChipProps> = ({ place, onAdd, onShowInMap }) => (
+const PlaceChip: React.FC<PlaceChipProps> = ({ place, onAdd, onShowInMap, isHebrew }) => (
   <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 hover:border-teal-200 hover:bg-teal-50/30 transition-all place-card-hover">
     <div className="flex items-start justify-between gap-3">
       <div className="flex-1 min-w-0">
@@ -359,7 +380,7 @@ const PlaceChip: React.FC<PlaceChipProps> = ({ place, onAdd, onShowInMap }) => (
             className="flex items-center gap-0.5 text-[10px] font-medium text-slate-400 hover:text-teal-600 transition-colors"
           >
             <MapPin className="w-3 h-3" />
-            Maps
+            {isHebrew ? 'גוגל מפות' : 'Google Maps'}
           </a>
           {onShowInMap && (
             <button
@@ -367,7 +388,7 @@ const PlaceChip: React.FC<PlaceChipProps> = ({ place, onAdd, onShowInMap }) => (
               className="flex items-center gap-0.5 text-[10px] font-medium text-slate-400 hover:text-sky-600 transition-colors"
             >
               <MapPin className="w-3 h-3" />
-              Show
+              {isHebrew ? 'הצג במפה' : 'Show in Map'}
             </button>
           )}
         </div>
@@ -377,7 +398,7 @@ const PlaceChip: React.FC<PlaceChipProps> = ({ place, onAdd, onShowInMap }) => (
         className="flex items-center gap-1 px-2.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-semibold transition-colors shrink-0 shadow-sm"
       >
         <Plus className="w-3 h-3" />
-        Add
+        {isHebrew ? 'הוסף' : 'Add'}
       </button>
     </div>
   </div>

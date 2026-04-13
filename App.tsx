@@ -22,6 +22,7 @@ const App: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
+  const [language, setLanguage] = useState<'en' | 'he'>('en');
   const mapContainerRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -256,6 +257,8 @@ const App: React.FC = () => {
         googleUser={googleUser}
         apiKey={apiKey}
         hasApiKey={hasApiKey}
+        language={language}
+        onLanguageChange={setLanguage}
         onImportClick={handleImportFromMyMaps}
         onLogout={logout}
         onReset={resetTrip}
@@ -299,6 +302,7 @@ const App: React.FC = () => {
                   loading={chatLoading}
                   messages={chatMessages}
                   savedLayers={savedLayers}
+                  language={language}
                   onSendMessage={handleSendMessage}
                   onAddPlace={handleAddPlaceFromChat}
                   onAddAll={handleAddAllPlaces}
