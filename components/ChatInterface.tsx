@@ -40,6 +40,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 }) => {
   const [inputMessage, setInputMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const isHebrew = language === 'he';
@@ -58,9 +59,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     return places.filter(place => !isPlaceAdded(place));
   };
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom within the chat container only (not the page)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
   }, [messages]);
 
   const handleSend = () => {
@@ -105,7 +108,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       </div>
 
       {/* Messages Container */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-slate-50/40">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-5 space-y-5 bg-slate-50/40">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center space-y-5 py-10 px-6">
             {/* Hero Icon */}

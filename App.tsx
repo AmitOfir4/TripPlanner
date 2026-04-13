@@ -1,9 +1,9 @@
 import React, { useRef, useState } from 'react';
 import { Header } from './components/Header';
 import { ChatInterface, ChatMessage } from './components/ChatInterface';
-import { SavedPlacesSidebar } from './components/SavedPlacesSidebar';
 import { ImportModal } from './components/ImportModal';
 import { MapView } from './components/MapView';
+import { Download, Upload } from 'lucide-react';
 import { useGoogleAuth } from './hooks/useGoogleAuth';
 import { useApiKey } from './hooks/useApiKey';
 import { useTripPlanner } from './hooks/useTripPlanner';
@@ -324,18 +324,26 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            {/* Saved Places - Below Chat & Map */}
+            {/* Action buttons - Download & Upload */}
             {savedLayers.length > 0 && (
-              <SavedPlacesSidebar
-                savedLayers={savedLayers}
-                googleUser={googleUser}
-                enriching={enriching}
-                onRemovePlace={handleRemovePlace}
-                onDownload={handleDownload}
-                onUploadToDrive={handleUploadToDrive}
-                onEnrichSelected={handleEnrichSelected}
-                onViewInMap={handleViewInMap}
-              />
+              <div className="flex gap-3">
+                <button
+                  onClick={handleDownload}
+                  className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2.5 transition-all shadow-md shadow-teal-200/60 active:scale-[0.98] text-sm"
+                >
+                  <Download className="w-4 h-4" />
+                  Download Map
+                </button>
+                {googleUser && (
+                  <button
+                    onClick={handleUploadToDrive}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2.5 transition-all shadow-md shadow-emerald-200/60 active:scale-[0.98] text-sm"
+                  >
+                    <Upload className="w-4 h-4" />
+                    Upload to Google Maps
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>

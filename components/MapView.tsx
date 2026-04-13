@@ -1,7 +1,7 @@
 /// <reference types="@types/google.maps" />
 import React, { useState, useEffect, useRef } from 'react';
 import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow, useMap } from '@vis.gl/react-google-maps';
-import { MapPin, Maximize2, Minimize2, Star, ExternalLink, Search, Edit2, Check, X, Trash2, Plus } from 'lucide-react';
+import { MapPin, Maximize2, Minimize2, Star, ExternalLink, Search, Edit2, Check, X, Trash2, Plus, List, ChevronDown, ChevronRight, Layers } from 'lucide-react';
 import { TripRecommendation, TripLayer } from '../types';
 import { AVAILABLE_KML_ICONS, KML_ICON_STYLES, CATEGORY_RULES } from '../constants';
 import { KmlIconSelector } from './KmlIconSelector';
@@ -135,6 +135,8 @@ export const MapView: React.FC<MapViewProps> = ({
   const [searchResults, setSearchResults] = useState<google.maps.GeocoderResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isAddingToTrip, setIsAddingToTrip] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [collapsedLayers, setCollapsedLayers] = useState<Set<string>>(new Set());
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const geocodingInFlightRef = useRef<Set<string>>(new Set());
   
@@ -321,6 +323,15 @@ export const MapView: React.FC<MapViewProps> = ({
           </div>
         </div>
 
+        {savedLayers.length > 0 && (
+          <button
+            onClick={() => setIsSidebarOpen(v => !v)}
+            className={`p-2 rounded-xl transition-colors ${isSidebarOpen ? 'bg-teal-100 text-teal-700' : 'hover:bg-white text-slate-600'}`}
+            title={isSidebarOpen ? 'Hide trip summary' : 'Show trip summary'}
+          >
+            <List className="w-5 h-5" />
+          </button>
+        )}
         <button
           onClick={() => setIsExpanded(!isExpanded)}
           className="p-2 hover:bg-white rounded-xl transition-colors"
@@ -335,7 +346,104 @@ export const MapView: React.FC<MapViewProps> = ({
       </div>
 
       {/* Map Container */}
-      <div className={`map-wrapper relative ${isExpanded ? 'h-[calc(100%-4rem)]' : 'h-[850px]'}`}>
+      <div className={`map-wrapper flex ${isExpanded ? 'h-[calc(100%-4rem)]' : 'h-[850px]'}`}>
+
+        {/* Trip Summary Sidebar */}
+        {savedLayers.length > 0 && (
+          <div className={`relative flex-shrink-0 h-full transition-all duration-300 ease-in-out ${
+            isSidebarOpen ? 'w-64' : 'w-0'
+          }`}>
+            {/* Sidebar content — hidden when collapsed */}
+            <div className={`absolute inset-0 w-64 h-full flex flex-col border-r border-slate-200 bg-white overflow-hidden transition-all duration-300 ${
+              isSidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+            }`}>
+              {/* Sidebar Header */}
+              <div className="flex-shrink-0 bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-2">
+                <Layers className="w-4 h-4 text-teal-600" />
+                <span className="text-sm font-black text-slate-900">Trip Summary</span>
+                <span className="ml-auto text-xs text-slate-400 font-medium">
+                  {savedLayers.reduce((n, l) => n + l.places.length, 0)} places
+                </span>
+              </div>
+
+              {/* Layers — scrollable */}
+              <div className="flex-1 overflow-y-auto">
+                {savedLayers.map((layer) => {
+                  const isCollapsed = collapsedLayers.has(layer.name);
+                  const toggleLayer = () =>
+                    setCollapsedLayers(prev => {
+                      const next = new Set(prev);
+                      isCollapsed ? next.delete(layer.name) : next.add(layer.name);
+                      return next;
+                    });
+
+                  return (
+                    <div key={layer.name} className="border-b border-slate-100 last:border-b-0">
+                      {/* Layer header */}
+                      <button
+                        onClick={toggleLayer}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-slate-50 transition-colors text-left"
+                      >
+                        {isCollapsed
+                          ? <ChevronRight className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                          : <ChevronDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />}
+                        <span className="text-xs font-black text-slate-700 truncate flex-1">{layer.name}</span>
+                        <span className="text-[10px] text-slate-400 flex-shrink-0">{layer.places.length}</span>
+                      </button>
+
+                      {/* Places */}
+                      {!isCollapsed && (
+                        <ul>
+                          {layer.places.map((place, idx) => {
+                            const iconStyle = place.customKmlIcon || getDefaultKmlIcon(place.category);
+                            const iconUrl = AVAILABLE_KML_ICONS.find(i => i.id === iconStyle)?.url || AVAILABLE_KML_ICONS[0].url;
+                            const isActive = selectedPlace?.title === place.title;
+                            return (
+                              <li key={idx}>
+                                <button
+                                  onClick={() => {
+                                    setSelectedPlace(place);
+                                    onMarkerClick?.(place);
+                                  }}
+                                  className={`w-full flex items-center gap-2.5 pl-8 pr-4 py-2 text-left transition-colors ${
+                                    isActive ? 'bg-teal-50' : 'hover:bg-slate-50'
+                                  }`}
+                                >
+                                  <img src={iconUrl} alt={place.category} className="w-4 h-4 flex-shrink-0" />
+                                  <span className={`text-xs truncate ${
+                                    isActive ? 'font-bold text-teal-700' : 'text-slate-700'
+                                  }`}>{place.title}</span>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Collapse / expand tab on sidebar edge */}
+            <button
+              onClick={() => setIsSidebarOpen(v => !v)}
+              title={isSidebarOpen ? 'Collapse sidebar' : 'Show trip summary'}
+              className={`absolute top-1/2 -translate-y-1/2 -right-5 z-20 flex items-center justify-end pr-0.5 rounded-r-xl shadow-md border border-slate-200 bg-white hover:bg-slate-50 transition-all duration-200 ${
+                isSidebarOpen ? 'w-5 h-12' : 'w-8 h-20'
+              }`}
+            >
+              {isSidebarOpen ? (
+                <ChevronRight className="w-3 h-3 text-slate-400" />
+              ) : (
+                <ChevronRight className="w-5 h-5 text-teal-600" strokeWidth={3} />
+              )}
+            </button>
+          </div>
+        )}
+
+        {/* Map area */}
+        <div className="relative flex-1 h-full">
         {apiKey ? (
           <APIProvider apiKey={apiKey}>
             <Map
@@ -659,7 +767,7 @@ export const MapView: React.FC<MapViewProps> = ({
             </Map>
           </APIProvider>
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-50 to-indigo-50">
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-50 to-indigo-50" style={{minHeight: 0}}>
             <div className="text-center p-8 max-w-md">
               <MapPin className="w-16 h-16 text-indigo-400 mx-auto mb-4" />
               <p className="text-slate-900 font-bold text-lg mb-2">Google Maps API Key Required</p>
@@ -678,6 +786,7 @@ export const MapView: React.FC<MapViewProps> = ({
             </div>
           </div>
         )}
+        </div>{/* end map area */}
       </div>
     </div>
   );
