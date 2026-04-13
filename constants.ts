@@ -59,12 +59,14 @@ export const KML_ICON_STYLES: Record<string, string> = {
 };
 
 export const AVAILABLE_KML_ICONS = [
-  { id: 'icon-camera', name: 'Camera', url: 'http://maps.google.com/mapfiles/kml/shapes/camera.png' },
-  { id: 'icon-dining', name: 'Dining', url: 'http://maps.google.com/mapfiles/kml/shapes/dining.png' },
-  { id: 'icon-arts', name: 'Arts', url: 'http://maps.google.com/mapfiles/kml/shapes/arts.png' },
-  { id: 'icon-shopping', name: 'Shopping', url: 'http://maps.google.com/mapfiles/kml/shapes/shopping.png' },
+  { id: 'icon-camera', name: 'Camera', url: 'https://i.postimg.cc/zbtLPvhZ/image.png' },
+  { id: 'icon-dining', name: 'Dining', url: 'https://i.postimg.cc/WFrK5FCT/image.png' },
+  { id: 'icon-arts', name: 'Museum', url: 'https://i.postimg.cc/64rkp2fL/image.png' },
+  { id: 'icon-shopping', name: 'Shopping', url: 'https://i.postimg.cc/w7JvD00S/image.png' },
   { id: 'icon-parks', name: 'Parks', url: 'http://maps.google.com/mapfiles/kml/shapes/parks.png' },
-  { id: 'icon-beach', name: 'Beach', url: 'http://maps.google.com/mapfiles/kml/shapes/swimming.png' },
-  { id: 'icon-bars', name: 'Bars', url: 'http://maps.google.com/mapfiles/kml/shapes/bars.png' },
-  { id: 'icon-hotel', name: 'Hotel', url: 'http://maps.google.com/mapfiles/kml/shapes/lodging.png' },
+  { id: 'icon-beach', name: 'Beach', url: 'https://i.postimg.cc/629RmF1Q/image.png' },
+  { id: 'icon-bars', name: 'Bars', url: 'https://i.postimg.cc/ygFQmq3f/image.png' },
+  { id: 'icon-hotel', name: 'Hotel', url: 'https://i.postimg.cc/kBZHPyCm/image.png' },
+  { id: 'icon-icecream', name: 'Ice Cream', url: 'https://i.postimg.cc/DJgQf7bq/image.png' },
+  { id: 'icon-coffee', name: 'Coffee', url: 'https://i.postimg.cc/2bfT8H9r/image.png' },
 ] as const;

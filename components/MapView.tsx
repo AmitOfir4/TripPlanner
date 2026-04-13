@@ -601,7 +601,7 @@ export const MapView: React.FC<MapViewProps> = ({
                     setEditingIconForPlace(null);
                   }}
                 >
-                  <div className="p-2 max-w-xs -mt-3">
+                  <div className="p-2 max-w-xs -mt-1">
                     {/* Icon above title — click to change */}
                     {isPlaceSaved(selectedPlace) && onUpdatePlace && (
                       <div className="mb-1">

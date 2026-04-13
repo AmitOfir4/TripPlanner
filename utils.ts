@@ -32,14 +32,16 @@ const getStyleId = (category: string, title: string, description: string): strin
  */
 const getKmlStyles = (): string => {
   const styles = [
-    { id: 'icon-dining', url: 'http://maps.google.com/mapfiles/kml/shapes/dining.png' },
+    { id: 'icon-dining', url: 'https://i.postimg.cc/WFrK5FCT/image.png' },
     { id: 'icon-parks', url: 'http://maps.google.com/mapfiles/kml/shapes/parks.png' },
-    { id: 'icon-arts', url: 'http://maps.google.com/mapfiles/kml/shapes/arts.png' },
-    { id: 'icon-shopping', url: 'http://maps.google.com/mapfiles/kml/shapes/shopping.png' },
-    { id: 'icon-bars', url: 'http://maps.google.com/mapfiles/kml/shapes/bars.png' },
-    { id: 'icon-camera', url: 'http://maps.google.com/mapfiles/kml/shapes/camera.png' },
-    { id: 'icon-beach', url: 'http://maps.google.com/mapfiles/kml/shapes/swimming.png' },
-    { id: 'icon-hotel', url: 'http://maps.google.com/mapfiles/kml/shapes/lodging.png' },
+    { id: 'icon-arts', url: 'https://i.postimg.cc/64rkp2fL/image.png' },
+    { id: 'icon-shopping', url: 'https://i.postimg.cc/w7JvD00S/image.png' },
+    { id: 'icon-bars', url: 'https://i.postimg.cc/ygFQmq3f/image.png' },
+    { id: 'icon-camera', url: 'https://i.postimg.cc/zbtLPvhZ/image.png' },
+    { id: 'icon-beach', url: 'https://i.postimg.cc/629RmF1Q/image.png' },
+    { id: 'icon-hotel', url: 'https://i.postimg.cc/kBZHPyCm/image.png' },
+    { id: 'icon-icecream', url: 'https://i.postimg.cc/DJgQf7bq/image.png' },
+    { id: 'icon-coffee', url: 'https://i.postimg.cc/2bfT8H9r/image.png' },
     { id: 'icon-default', url: 'http://maps.google.com/mapfiles/kml/pushpin/blue-pushpin.png' },
   ];
 
