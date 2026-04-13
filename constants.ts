@@ -31,11 +31,13 @@ export const API_LIMITS = {
 export const CATEGORY_RULES: Record<string, string[]> = {
   'Tourist Attractions': ['attraction', 'historical', 'nature', 'monument', 'sight'],
   'Bar': ['nightlife', 'bar', 'club', 'pub', 'cocktail'],
-  'Restaurants': ['food', 'restaurant', 'dining', 'cafe'],
+  'Restaurants': ['food', 'restaurant', 'dining'],
   'Museums & Galleries': ['museum', 'gallery', 'art'],
   'Shopping': ['shop', 'market', 'mall'],
   'Beach': ['beach', 'sea', 'ocean'],
-  'Hotels': ['hotel', 'accommodation']
+  'Hotels': ['hotel', 'accommodation'],
+  'Ice Cream': ['ice cream', 'gelato', 'frozen yogurt', 'sorbet', 'icecream', 'dessert'],
+  'Coffee': ['coffee', 'espresso', 'cafe', 'café', 'tea house', 'teahouse', 'bakery']
 };
 
 export const CATEGORY_IMAGES = {
@@ -55,7 +57,9 @@ export const KML_ICON_STYLES: Record<string, string> = {
   'Museums & Galleries': 'icon-arts',
   'Shopping': 'icon-shopping',
   'Beach': 'icon-beach',
-  'Hotels': 'icon-hotel'
+  'Hotels': 'icon-hotel',
+  'Ice Cream': 'icon-icecream',
+  'Coffee': 'icon-coffee'
 };
 
 export const AVAILABLE_KML_ICONS = [
@@ -63,7 +67,6 @@ export const AVAILABLE_KML_ICONS = [
   { id: 'icon-dining', name: 'Dining', url: 'https://i.postimg.cc/WFrK5FCT/image.png' },
   { id: 'icon-arts', name: 'Museum', url: 'https://i.postimg.cc/64rkp2fL/image.png' },
   { id: 'icon-shopping', name: 'Shopping', url: 'https://i.postimg.cc/w7JvD00S/image.png' },
-  { id: 'icon-parks', name: 'Parks', url: 'http://maps.google.com/mapfiles/kml/shapes/parks.png' },
   { id: 'icon-beach', name: 'Beach', url: 'https://i.postimg.cc/629RmF1Q/image.png' },
   { id: 'icon-bars', name: 'Bars', url: 'https://i.postimg.cc/ygFQmq3f/image.png' },
   { id: 'icon-hotel', name: 'Hotel', url: 'https://i.postimg.cc/kBZHPyCm/image.png' },

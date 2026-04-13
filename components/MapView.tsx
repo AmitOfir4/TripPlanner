@@ -8,13 +8,14 @@ import { KmlIconSelector } from './KmlIconSelector';
 import { geocodeAddress, reverseGeocode } from '../services/geocodeService';
 
 // Helper to get default icon for a category
-const getDefaultKmlIcon = (category: string): string => {
-  const normalized = category.toLowerCase();
+const ICON_PRIORITY = ['Ice Cream', 'Coffee', 'Tourist Attractions', 'Hotels', 'Restaurants', 'Bar', 'Museums & Galleries', 'Shopping', 'Beach'];
+
+const getDefaultKmlIcon = (place: { category: string; title: string; description: string }): string => {
+  const text = `${place.category} ${place.title} ${place.description}`.toLowerCase();
   
-  for (const [categoryName, keywords] of Object.entries(CATEGORY_RULES)) 
-  {
-    if (keywords.some(keyword => normalized.includes(keyword))) 
-    {
+  for (const categoryName of ICON_PRIORITY) {
+    const keywords = CATEGORY_RULES[categoryName];
+    if (keywords && keywords.some(keyword => text.includes(keyword))) {
       return KML_ICON_STYLES[categoryName] || 'icon-camera';
     }
   }
@@ -397,7 +398,7 @@ export const MapView: React.FC<MapViewProps> = ({
                       {!isCollapsed && (
                         <ul>
                           {layer.places.map((place, idx) => {
-                            const iconStyle = place.customKmlIcon || getDefaultKmlIcon(place.category);
+                            const iconStyle = place.customKmlIcon || getDefaultKmlIcon(place);
                             const iconUrl = AVAILABLE_KML_ICONS.find(i => i.id === iconStyle)?.url || AVAILABLE_KML_ICONS[0].url;
                             const isActive = selectedPlace?.title === place.title;
                             return (
@@ -493,7 +494,7 @@ export const MapView: React.FC<MapViewProps> = ({
 
               {/* Render saved places with custom category icons */}
               {savedPlacesWithCoords.map((place, index) => {
-                const iconStyle = place.customKmlIcon || getDefaultKmlIcon(place.category);
+                const iconStyle = place.customKmlIcon || getDefaultKmlIcon(place);
                 const iconUrl = AVAILABLE_KML_ICONS.find(icon => icon.id === iconStyle)?.url || AVAILABLE_KML_ICONS[0].url;
                 const isFocused = focusedPlace?.title === place.title;
                 
@@ -535,7 +536,7 @@ export const MapView: React.FC<MapViewProps> = ({
                   const coords = geocodedSavedPlaces[place.title];
                   if (!coords) return null;
                   
-                  const iconStyle = place.customKmlIcon || getDefaultKmlIcon(place.category);
+                  const iconStyle = place.customKmlIcon || getDefaultKmlIcon(place);
                   const iconUrl = AVAILABLE_KML_ICONS.find(icon => icon.id === iconStyle)?.url || AVAILABLE_KML_ICONS[0].url;
                   const isFocused = focusedPlace?.title === place.title;
                   
@@ -601,7 +602,7 @@ export const MapView: React.FC<MapViewProps> = ({
                     setEditingIconForPlace(null);
                   }}
                 >
-                  <div className="p-2 max-w-xs -mt-1">
+                  <div className="p-2 max-w-sm -mt-1">
                     {/* Icon above title — click to change */}
                     {isPlaceSaved(selectedPlace) && onUpdatePlace && (
                       <div className="mb-1">
@@ -613,14 +614,14 @@ export const MapView: React.FC<MapViewProps> = ({
                           title="Click to change icon"
                         >
                           <img
-                            src={AVAILABLE_KML_ICONS.find(i => i.id === (selectedPlace.customKmlIcon || getDefaultKmlIcon(selectedPlace.category)))?.url || AVAILABLE_KML_ICONS[0].url}
+                            src={AVAILABLE_KML_ICONS.find(i => i.id === (selectedPlace.customKmlIcon || getDefaultKmlIcon(selectedPlace)))?.url || AVAILABLE_KML_ICONS[0].url}
                             alt="icon"
                             className="w-6 h-6"
                           />
                         </button>
                         {editingIconForPlace === selectedPlace.title && (
                           <KmlIconSelector
-                            currentIconId={selectedPlace.customKmlIcon || getDefaultKmlIcon(selectedPlace.category)}
+                            currentIconId={selectedPlace.customKmlIcon || getDefaultKmlIcon(selectedPlace)}
                             onIconChange={(iconId) => {
                               const updated = { ...selectedPlace, customKmlIcon: iconId };
                               onUpdatePlace(updated);
@@ -634,7 +635,7 @@ export const MapView: React.FC<MapViewProps> = ({
                     <h4 className="font-bold text-sm text-slate-900 mb-1">
                       {selectedPlace.title}
                     </h4>
-                    <p className="text-xs text-slate-600 mb-2 line-clamp-2">
+                    <p className="text-xs text-slate-600 mb-2">
                       {selectedPlace.description}
                     </p>
                     {selectedPlace.rating && (

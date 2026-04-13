@@ -15,7 +15,7 @@ const getStyleId = (category: string, title: string, description: string): strin
   const text = `${category} ${title} ${description}`.toLowerCase();
   
   // Check specific categories first - Hotels before Bar to avoid hotels with bars being categorized as bars
-  const priorityOrder = ['Tourist Attractions', 'Hotels', 'Restaurants', 'Bar', 'Museums & Galleries', 'Shopping', 'Beach'];
+  const priorityOrder = ['Ice Cream', 'Coffee', 'Tourist Attractions', 'Hotels', 'Restaurants', 'Bar', 'Museums & Galleries', 'Shopping', 'Beach'];
   
   for (const categoryName of priorityOrder) {
     const keywords = CATEGORY_RULES[categoryName];
@@ -33,7 +33,6 @@ const getStyleId = (category: string, title: string, description: string): strin
 const getKmlStyles = (): string => {
   const styles = [
     { id: 'icon-dining', url: 'https://i.postimg.cc/WFrK5FCT/image.png' },
-    { id: 'icon-parks', url: 'http://maps.google.com/mapfiles/kml/shapes/parks.png' },
     { id: 'icon-arts', url: 'https://i.postimg.cc/64rkp2fL/image.png' },
     { id: 'icon-shopping', url: 'https://i.postimg.cc/w7JvD00S/image.png' },
     { id: 'icon-bars', url: 'https://i.postimg.cc/ygFQmq3f/image.png' },

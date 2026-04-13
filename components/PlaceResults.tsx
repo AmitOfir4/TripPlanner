@@ -16,11 +16,13 @@ interface PlaceResultsProps {
 }
 
 // Normalize categories - group similar ones
-const normalizeCategory = (category: string): string => {
-  const normalized = category.toLowerCase();
+const normalizeCategory = (place: TripRecommendation): string => {
+  const text = `${place.category} ${place.title} ${place.description}`.toLowerCase();
   
-  for (const [categoryName, keywords] of Object.entries(CATEGORY_RULES)) {
-    if (keywords.some(keyword => normalized.includes(keyword))) {
+  // Use priority order so Ice Cream is checked before Coffee (avoids 'cafe' stealing ice cream places)
+  for (const categoryName of CATEGORY_ORDER) {
+    const keywords = CATEGORY_RULES[categoryName];
+    if (keywords && keywords.some(keyword => text.includes(keyword))) {
       return categoryName;
     }
   }
@@ -30,9 +32,11 @@ const normalizeCategory = (category: string): string => {
 
 // Category priority order
 const CATEGORY_ORDER = [
+  'Ice Cream',
   'Tourist Attractions',
-  'Bar',
   'Restaurants',
+  'Coffee',
+  'Bar',
   'Museums & Galleries',
   'Shopping',
   'Beach',
@@ -86,7 +90,7 @@ export const PlaceResults: React.FC<PlaceResultsProps> = ({
 
   // Group suggestions by normalized category
   const groupedByCategory = suggestions.reduce((acc, place) => {
-    const category = normalizeCategory(place.category || 'Other');
+    const category = normalizeCategory(place);
     if (!acc[category]) {
       acc[category] = [];
     }
