@@ -44,6 +44,35 @@ export async function fetchMyMaps(accessToken: string): Promise<MyMapsFile[]> {
 }
 
 /**
+ * Fetches KML files from the user's Google Drive (uploaded trip files)
+ */
+export async function fetchKmlFiles(accessToken: string): Promise<MyMapsFile[]> {
+  try {
+    const query = "mimeType='application/vnd.google-earth.kml+xml' and trashed=false";
+    const timestamp = Date.now();
+    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,createdTime,modifiedTime,webViewLink)&orderBy=modifiedTime desc&_=${timestamp}`;
+
+    const response = await fetch(url, {
+      cache: 'no-store',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch KML files: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.files || [];
+  } catch (error) {
+    console.error('Error fetching KML files:', error);
+    return [];
+  }
+}
+
+/**
  * Downloads a My Maps file as KML
  * My Maps files must be publicly shared to download. This function attempts to:
  * 1. Download via public KML URL using a CORS proxy

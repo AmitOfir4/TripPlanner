@@ -190,8 +190,7 @@ export const MapView: React.FC<MapViewProps> = ({
       description: result.formatted_address || '',
       category: 'Other',
       lat: location.lat(),
-      lng: location.lng(),
-      needsEnrichment: false
+      lng: location.lng()
     };
     
     setSelectedPlace(newPlace);

@@ -24,6 +24,7 @@ export interface TripRecommendation {
   rating?: number;
   placeId?: string;
   customKmlIcon?: string;
+  needsEnrichment?: boolean;
   /** The city this place belongs to. Set when a place comes from a chat query
    * about a different city than the current session city. Used to geocode
    * correctly and create the right layer in the trip summary. */

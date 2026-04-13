@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Header } from './components/Header';
 import { ChatInterface, ChatMessage } from './components/ChatInterface';
 import { ImportModal } from './components/ImportModal';
+import { UploadModal } from './components/UploadModal';
 import { MapView } from './components/MapView';
 import { Download, Upload } from 'lucide-react';
 import { useGoogleAuth } from './hooks/useGoogleAuth';
@@ -11,7 +12,7 @@ import { useMapImport } from './hooks/useMapImport';
 import { useUserLocation } from './hooks/useUserLocation';
 import { TripService } from './services/tripService';
 import { sendChatMessage } from './chatService';
-import { MyMapsFile } from './googleDriveService';
+import { MyMapsFile, fetchKmlFiles } from './googleDriveService';
 import { TripRecommendation } from './types';
 
 const App: React.FC = () => {
@@ -24,6 +25,13 @@ const App: React.FC = () => {
   const [chatLoading, setChatLoading] = useState(false);
   const [language, setLanguage] = useState<'en' | 'he'>('en');
   const mapContainerRef = useRef<HTMLDivElement>(null);
+
+  // Upload modal state
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadDriveFiles, setUploadDriveFiles] = useState<MyMapsFile[]>([]);
+  const [loadingDriveFiles, setLoadingDriveFiles] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<{ success: boolean; fileName: string } | null>(null);
 
   const {
     currentCity,
@@ -199,12 +207,40 @@ const App: React.FC = () => {
 
   const handleUploadToDrive = async () => {
     if (!googleUser) return;
+    setShowUploadModal(true);
+    setUploadResult(null);
+  };
 
+  const handleRefreshDriveFiles = async () => {
+    if (!googleUser) return;
+    setLoadingDriveFiles(true);
     try {
-      await TripService.uploadToGoogleDrive(savedLayers, currentCity, googleUser.accessToken);
+      const files = await fetchKmlFiles(googleUser.accessToken);
+      setUploadDriveFiles(files);
+    } catch (error) {
+      console.error('Error fetching Drive files:', error);
+    } finally {
+      setLoadingDriveFiles(false);
+    }
+  };
+
+  const handleDoUpload = async (fileName: string, fileIdToUpdate?: string) => {
+    if (!googleUser) return;
+    setUploading(true);
+    try {
+      const result = await TripService.uploadToGoogleDrive(
+        savedLayers,
+        currentCity,
+        googleUser.accessToken,
+        fileName,
+        fileIdToUpdate
+      );
+      setUploadResult({ success: true, fileName: result.fileName });
     } catch (error) {
       console.error('Error uploading to Drive:', error);
       alert('Failed to upload to Google Drive. Please try again.');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -358,6 +394,19 @@ const App: React.FC = () => {
         onClose={closeImportModal}
         onSelectMap={handleSelectMap}
         onFileUpload={handleKMLFileUpload}
+      />
+
+      {/* Upload Modal */}
+      <UploadModal
+        show={showUploadModal}
+        cityName={currentCity}
+        existingFiles={uploadDriveFiles}
+        loadingFiles={loadingDriveFiles}
+        uploading={uploading}
+        uploadResult={uploadResult}
+        onClose={() => setShowUploadModal(false)}
+        onUpload={handleDoUpload}
+        onRefreshFiles={handleRefreshDriveFiles}
       />
     </div>
   );
