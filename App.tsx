@@ -27,7 +27,7 @@ const App: React.FC = () => {
 
   const {
     currentCity, setCurrentCity, savedLayers, setSavedLayers,
-    pendingSuggestions, setPendingSuggestions, savePlace, resetTrip,
+    savePlace, resetTrip,
   } = useTripPlanner(userLocation, apiKey);
 
   const {

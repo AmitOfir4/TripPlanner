@@ -1,6 +1,5 @@
 
-import { TripData, TripRecommendation } from "./types";
-import { KML_ICON_STYLES } from "./constants";
+import { TripData } from "./types";
 import { getDefaultKmlIcon } from "./helpers/kmlIconHelper";
 
 /**

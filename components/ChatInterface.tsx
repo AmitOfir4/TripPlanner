@@ -141,8 +141,8 @@ const EmptyChat: React.FC<{ isHebrew: boolean; onSuggestionClick: (text: string)
   isHebrew, onSuggestionClick,
 }) => {
   const suggestions = isHebrew
-    ? ['✈️ טיול של 3 ימים בפריז', '🍜 האוכל הכי טוב בטוקיו', '👨‍👩‍👧 טיול משפחתי ברומא', '🌊 הרפתקה בבאלי']
-    : ['✈️ 3-day trip to Paris', '🍜 Best food in Tokyo', '👨‍👩‍👧 Family trip to Rome', '🌊 Adventure in Bali'];
+    ? ['✈️ טיול של 4 ימים בפריז', '🍜 האוכל הכי טוב בטוקיו', '👨‍👩‍👧 טיול משפחתי ברומא', '🌊 הרפתקה בבאלי']
+    : ['✈️ 4-day trip to Paris', '🍜 Best food in Tokyo', '👨‍👩‍👧 Family trip to Rome', '🌊 Adventure in Bali'];
 
   return (
     <div className={s.emptyState}>
