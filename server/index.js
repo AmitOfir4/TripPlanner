@@ -6,6 +6,27 @@ import { neon } from '@neondatabase/serverless';
 
 dotenv.config();
 
+// Words that should never be treated as city names
+const STOP_WORDS = new Set(['me','my','a','the','an','it','we','us','i','all','some','this','that','our','your','there','here','them','day','days','trip','plan','visit','see','want','need','like','show','find','get','know','make','take','give']);
+
+function extractCityFromMessage(message) {
+  const tryMatch = (regex) => {
+    const m = message.match(regex);
+    if (!m) return null;
+    const candidate = m[1].trim();
+    if (STOP_WORDS.has(candidate.split(/\s+/)[0].toLowerCase())) return null;
+    return candidate;
+  };
+
+  return tryMatch(/\b(?:trip|travel|vacation|holiday|fly(?:ing)?|going|headed)\s+(?:to|in)\s+([A-Za-z][A-Za-z\s]{1,25}?)(?=[,.]|\s*$|\s+[-–]|\s+(?:for|with|and|please|i|we|to|that|where|from|\d))/i)
+    || tryMatch(/\b(?:\d+\s*days?|weekend|week)\s+(?:in|at)\s+([A-Za-z][A-Za-z\s]{1,25}?)(?=[,.]|\s*$|\s+[-–]|\s+(?:for|with|and|please|i|we|to|that|\d))/i)
+    || tryMatch(/\b(?:restaurants?|hotels?|cafes?|bars?|clubs?|museums?|attractions?|places?|spots?|things?|activities)\s+in\s+([A-Za-z][A-Za-z\s]{1,25}?)(?=[,.]|\s*$|\s+[-–]|\s+(?:for|with|and|please|i|we))/i)
+    || tryMatch(/\b(?:visit(?:ing)?|explore|exploring|discover)\s+([A-Za-z][A-Za-z\s]{1,20}?)(?=[,.]|\s*$|\s+[-–]|\s+(?:for|with|and|please|i|we|to|that|\d))/i)
+    || tryMatch(/\b(?:in|to|at)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)(?=[,.]|\s|$)/)
+    || tryMatch(/(?:מסעדות?|בתי קפה|מלונות?|ברים|אטרקציות?|מקומות?)\s+ב([\u0590-\u05FF][\u0590-\u05FF\s]{1,20}?)(?=[,.]|\s*$)/u)
+    || tryMatch(/(?:^|\s)ב([\u0590-\u05FF][\u0590-\u05FF\s]{1,20}?)(?=[,.]|\s*$|\s+[-–])/u);
+}
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -257,18 +278,20 @@ app.post('/api/enrich', async (req, res) => {
     // Initialize Gemini AI with provided key
     const ai = new GoogleGenAI({ apiKey: geminiApiKey });
     
-    // Create enrichment prompt
+    // Create enrichment prompt - explicit about finding the right place in the right city
     const placeNames = places.map(p => p.title).join('\n- ');
-    const prompt = `For each place in ${city}, provide EXACT coordinates and ratings using Google Maps:
+    const prompt = `Find the EXACT location of each of these specific places in ${city} using Google Maps.
+Search for each place BY ITS FULL NAME within ${city} to ensure you get the correct location.
 
-Places to enrich:
+Places to find in ${city}:
 - ${placeNames}
 
 RULES:
-1. USE GOOGLE MAPS GROUNDING to get exact data
-2. MUST include (latitude, longitude) for every place
-3. Find real ratings from Google Maps
-4. Keep descriptions concise (max 15 words)
+1. USE GOOGLE MAPS GROUNDING to look up each place in ${city}
+2. Search for "[place name], ${city}" to get the correct location — do NOT return places from other cities
+3. MUST include exact (latitude, longitude) for every place
+4. Find real ratings from Google Maps
+5. Keep descriptions concise (max 15 words)
 
 FORMAT (one line per place):
 * [Category] | Place Name | [Rating/5.0] | (latitude, longitude) - Description
@@ -408,12 +431,7 @@ app.post('/api/chat', async (req, res) => {
     }
 
     // ── City Resolution ─────────────────────────────────────────────────
-    const messageCityMatch =
-      message.match(/\b(?:restaurants?|hotels?|cafes?|bars?|clubs?|museums?|attractions?|places?|spots?|things?|activities)\s+in\s+([a-zA-Z][a-zA-Z\s]{1,25}?)(?=[,.]|\s*$|\s+[-–]|\s+(?:for|with|and|please|i|we))/i) ||
-      message.match(/\b(?:in|to|at|for|visit(?:ing)?)\s+([a-zA-Z][a-zA-Z\s]{1,20}?)(?=[,.]|\s*$|\s+[-–]|\s+(?:for|with|and|please|i|we|to))/i) ||
-      message.match(/(?:מסעדות?|בתי קפה|מלונות?|ברים|אטרקציות?|מקומות?)\s+ב([\u0590-\u05FF][\u0590-\u05FF\s]{1,20}?)(?=[,.]|\s*$)/u) ||
-      message.match(/(?:^|\s)ב([\u0590-\u05FF][\u0590-\u05FF\s]{1,20}?)(?=[,.]|\s*$|\s+[-–])/u);
-    const cityFromMessage = messageCityMatch ? messageCityMatch[1].trim() : null;
+    const cityFromMessage = extractCityFromMessage(message);
     const resolvedCity = cityFromMessage || city;
 
     const isHebrew = /[\u0590-\u05FF]/.test(message);
@@ -449,13 +467,19 @@ Authentic Italian:
 [PLACE: Roscioli | Restaurant | Part deli, part restaurant — exceptional pasta and an incredible wine cellar.]
 
 RESPONSE MODES (pick based on the user's message):
-1. MULTI-DAY TRIP / ITINERARY — Start each day with [DAY: Day X - Theme Title], include 8-12 [PLACE:] per day.
-2. SPECIFIC RECOMMENDATIONS — 2-3 intro sentences, then 12-20 [PLACE:] grouped under subheadings. No [DAY:] markers.
+1. MULTI-DAY TRIP / ITINERARY — Start each day with [DAY: Day X - Theme Title].
+   - Include 10-15 [PLACE:] per day with a good mix of categories (landmarks, restaurants, culture, shopping, entertainment, nature).
+   - CRITICAL: You MUST include ALL of the destination's most famous and iconic landmarks and attractions spread across the trip days. Never skip a major tourist site — visitors expect to see every must-visit place in the city.
+   - Day 1 should feature the city's absolute top iconic attractions.
+   - Organize days geographically — group nearby places together to minimize travel time.
+   - For each day include at least 2-3 restaurant/cafe recommendations near that day's attractions.
+2. SPECIFIC RECOMMENDATIONS — 2-3 intro sentences, then 15-25 [PLACE:] grouped under subheadings. No [DAY:] markers.
 3. GENERAL QUESTION — Conversational answer. Use [PLACE:] for any specific places mentioned.
 
 Rules:
 - Plain text only — no markdown (no **, ##, or * bullets)
 - Only recommend real, existing places
+- Always use the FULL official name of each place for accurate map lookup (e.g. "Sagrada Familia" not "The Church", "Colosseum" not "The Arena", "Tsukiji Outer Market" not "Fish Market")
 - For budget requests include approximate price ranges
 - For luxury requests mention awards or accolades${isHebrew ? '\n- Reply entirely in Hebrew but keep [PLACE:] and [DAY:] markers in English so the app can parse them.' : ''}`;
 
@@ -465,7 +489,13 @@ Rules:
       role: msg.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: msg.content }]
     }));
-    const userText = resolvedCity ? `[City: ${resolvedCity}] ${message}` : message;
+    // Detect "X days trip to Y" pattern and add planning instructions
+    const tripMatch = message.match(/(\d+)\s*days?\s+(?:trip|itinerary|visit|vacation|holiday)\s+(?:to|in)\s+/i);
+    let userText = resolvedCity ? `[City: ${resolvedCity}] ${message}` : message;
+    if (tripMatch) {
+      const numDays = parseInt(tripMatch[1], 10);
+      userText += `\n\n[System hint: The user wants a ${numDays}-day itinerary. You MUST use MULTI-DAY TRIP mode. Include ALL of ${resolvedCity || 'the city'}'s most iconic landmarks and tourist attractions across the ${numDays} days. Do not leave out any major site. Aim for 10-15 places per day.]`;
+    }
     contents.push({ role: 'user', parts: [{ text: userText }] });
 
     // ── Stream response ─────────────────────────────────────────────────
@@ -475,7 +505,7 @@ Rules:
       config: {
         systemInstruction,
         temperature: 0.8,
-        maxOutputTokens: 8000
+        maxOutputTokens: 12000
       }
     });
 
@@ -564,7 +594,7 @@ Rules:
 
 // Geocode endpoint with Postgres cache
 app.post('/api/geocode', async (req, res) => {
-  const { address, lat, lng } = req.body;
+  const { address, lat, lng, cityCenter } = req.body;
   const isReverse = typeof lat === 'number' && typeof lng === 'number' && !address;
 
   if (!address && !isReverse) {
@@ -576,19 +606,29 @@ app.post('/api/geocode', async (req, res) => {
     return res.status(500).json({ error: 'Server missing GOOGLE_MAPS_API_KEY' });
   }
 
+  // Validate cityCenter if provided
+  const validCityCenter = cityCenter && typeof cityCenter.lat === 'number' && typeof cityCenter.lng === 'number'
+    ? cityCenter : null;
+
   const CACHE_TTL_DAYS = 365;
 
   const normalizeKey = (text) => text.toLowerCase().trim().replace(/\s+/g, ' ');
   const normalizeReverseKey = (lt, ln) => `rev:${lt.toFixed(4)},${ln.toFixed(4)}`;
 
-  const geocodeForward = async (addr, key) => {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addr)}&key=${key}`;
+  // Use Google Places API (Find Place) for all forward lookups
+  const findPlace = async (query, key, cityCenter) => {
+    let url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=geometry,formatted_address,name,place_id&key=${key}`;
+    if (cityCenter && cityCenter.lat && cityCenter.lng) {
+      url += `&locationbias=circle:50000@${cityCenter.lat},${cityCenter.lng}`;
+    }
     const resp = await fetch(url);
     const data = await resp.json();
-    if (data.status === 'OK' && data.results?.[0]) {
-      const r = data.results[0];
-      const placeName = r.address_components?.find(c => c.long_name.length > 2)?.long_name || r.formatted_address || '';
-      return { lat: r.geometry.location.lat, lng: r.geometry.location.lng, formatted_address: r.formatted_address || '', place_name: placeName };
+    if (data.status === 'OK' && data.candidates?.[0]) {
+      const c = data.candidates[0];
+      return {
+        lat: c.geometry.location.lat, lng: c.geometry.location.lng,
+        formatted_address: c.formatted_address || '', place_name: c.name || '', place_id: c.place_id || ''
+      };
     }
     return null;
   };
@@ -610,7 +650,7 @@ app.post('/api/geocode', async (req, res) => {
     console.warn('[Geocode] No DATABASE_URL — skipping cache');
     const result = isReverse
       ? await geocodeReverse(lat, lng, mapsApiKey)
-      : await geocodeForward(address, mapsApiKey);
+      : await findPlace(address, mapsApiKey, validCityCenter);
     if (!result) return res.status(404).json({ error: 'Geocoding returned no results' });
     return res.json({ ...result, cached: false });
   }
@@ -632,10 +672,10 @@ app.post('/api/geocode', async (req, res) => {
 
     const lookupKey = isReverse ? normalizeReverseKey(lat, lng) : normalizeKey(address);
 
-    // Call Google Maps first to get the canonical formatted_address
+    // Call Places API to find the exact place
     const result = isReverse
       ? await geocodeReverse(lat, lng, mapsApiKey)
-      : await geocodeForward(address, mapsApiKey);
+      : await findPlace(address, mapsApiKey, validCityCenter);
     if (!result) return res.status(404).json({ error: 'Geocoding returned no results' });
 
     const canonicalKey = normalizeKey(result.formatted_address);
@@ -670,7 +710,7 @@ app.post('/api/geocode', async (req, res) => {
     console.error('[Geocode] Error:', error);
     const result = isReverse
       ? await geocodeReverse(lat, lng, mapsApiKey)
-      : await geocodeForward(address, mapsApiKey);
+      : await findPlace(address, mapsApiKey, validCityCenter);
     if (!result) return res.status(404).json({ error: 'Geocoding returned no results' });
     return res.json({ ...result, cached: false });
   }

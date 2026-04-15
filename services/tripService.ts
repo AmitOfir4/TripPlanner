@@ -28,6 +28,27 @@ export class TripService {
   }
 
   static async geocodePlacesIfNeeded(layers: TripLayer[], cityName: string): Promise<TripLayer[]> {
+    // First, resolve city centers so we can bias individual place geocoding
+    const cityCenters: Record<string, { lat: number; lng: number }> = {};
+    const uniqueCities = new Set<string>();
+    for (const layer of layers) {
+      for (const place of layer.places) {
+        if (!place.lat || !place.lng) {
+          const city = place.city || layer.name || cityName;
+          if (city) uniqueCities.add(city);
+        }
+      }
+    }
+    // Geocode each unique city to get its center (used as bias)
+    await Promise.all(
+      [...uniqueCities].map(async (city) => {
+        const result = await geocodeAddress(city);
+        if (result) {
+          cityCenters[city] = { lat: result.lat, lng: result.lng };
+        }
+      })
+    );
+
     const enrichedLayers = await Promise.all(
       layers.map(async (layer) => {
         const enrichedPlaces = await Promise.all(
@@ -41,9 +62,10 @@ export class TripService {
             // then the layer name (which equals the city for AI searches),
             // then fall back to the overall session city.
             const geocodeCity = place.city || layer.name || cityName;
+            const cityCenter = cityCenters[geocodeCity];
             try {
               const searchQuery = `${place.title}, ${geocodeCity}`;
-              const result = await geocodeAddress(searchQuery);
+              const result = await geocodeAddress(searchQuery, cityCenter);
               
               if (result) {
                 return {

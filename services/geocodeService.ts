@@ -16,7 +16,10 @@ function reverseKey(lat: number, lng: number): string {
   return `rev:${lat.toFixed(4)},${lng.toFixed(4)}`;
 }
 
-export async function geocodeAddress(address: string): Promise<{ lat: number; lng: number; formatted_address: string } | null> {
+export async function geocodeAddress(
+  address: string,
+  cityCenter?: { lat: number; lng: number }
+): Promise<{ lat: number; lng: number; formatted_address: string } | null> {
   const key = forwardKey(address);
   const hit = memoryCache.get(key);
   if (hit) return hit;
@@ -29,7 +32,7 @@ export async function geocodeAddress(address: string): Promise<{ lat: number; ln
       const res = await fetch(GEOCODE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address })
+        body: JSON.stringify({ address, cityCenter })
       });
 
       if (!res.ok) return null;

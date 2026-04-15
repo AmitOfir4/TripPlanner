@@ -28,18 +28,6 @@ export const API_LIMITS = {
   MIN_REQUEST_INTERVAL: 2000, // milliseconds
 } as const;
 
-export const CATEGORY_RULES: Record<string, string[]> = {
-  'Tourist Attractions': ['attraction', 'historical', 'nature', 'monument', 'sight'],
-  'Bar': ['nightlife', 'bar', 'club', 'pub', 'cocktail'],
-  'Restaurants': ['food', 'restaurant', 'dining'],
-  'Museums & Galleries': ['museum', 'gallery', 'art'],
-  'Shopping': ['shop', 'market', 'mall'],
-  'Beach': ['beach', 'sea', 'ocean'],
-  'Hotels': ['hotel', 'accommodation'],
-  'Ice Cream': ['ice cream', 'gelato', 'frozen yogurt', 'sorbet', 'icecream', 'dessert'],
-  'Coffee': ['coffee', 'espresso', 'cafe', 'café', 'tea house', 'teahouse', 'bakery']
-};
-
 export const CATEGORY_IMAGES = {
   FOOD: "https://media.istockphoto.com/id/1417838650/vector/knife-fork-silhouette-icon-vector-icon.jpg?s=612x612&w=0&k=20&c=aEC7Gqh8Fr7KC3bzhBqijGm_rgavKos6ifO1Hsh5U-U=",
   MUSEUM: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT0VGDAlOY5W6bHDYDvuLzusoTiDWzEdNQWOg&s",

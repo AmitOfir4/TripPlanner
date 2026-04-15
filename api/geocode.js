@@ -25,18 +25,22 @@ function normalizeReverseKey(lat, lng) {
   return `rev:${lat.toFixed(4)},${lng.toFixed(4)}`;
 }
 
-async function geocodeForward(address, apiKey) {
-  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
+// Use Google Places API (Find Place) for all forward lookups — accurate for POIs, addresses, and cities
+async function findPlace(query, apiKey, cityCenter) {
+  let url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=geometry,formatted_address,name,place_id&key=${apiKey}`;
+  if (cityCenter && cityCenter.lat && cityCenter.lng) {
+    url += `&locationbias=circle:50000@${cityCenter.lat},${cityCenter.lng}`;
+  }
   const resp = await fetch(url);
   const data = await resp.json();
-  if (data.status === 'OK' && data.results && data.results[0]) {
-    const result = data.results[0];
-    const placeName = result.address_components?.find(c => c.long_name.length > 2)?.long_name || result.formatted_address || '';
+  if (data.status === 'OK' && data.candidates && data.candidates[0]) {
+    const c = data.candidates[0];
     return {
-      lat: result.geometry.location.lat,
-      lng: result.geometry.location.lng,
-      formatted_address: result.formatted_address || '',
-      place_name: placeName
+      lat: c.geometry.location.lat,
+      lng: c.geometry.location.lng,
+      formatted_address: c.formatted_address || '',
+      place_name: c.name || '',
+      place_id: c.place_id || ''
     };
   }
   return null;
@@ -74,7 +78,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { address, lat, lng } = req.body;
+  const { address, lat, lng, cityCenter } = req.body;
   const isReverse = typeof lat === 'number' && typeof lng === 'number' && !address;
 
   if (!address && !isReverse) {
@@ -86,12 +90,16 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Server missing GOOGLE_MAPS_API_KEY' });
   }
 
+  // Validate cityCenter if provided
+  const validCityCenter = cityCenter && typeof cityCenter.lat === 'number' && typeof cityCenter.lng === 'number'
+    ? cityCenter : null;
+
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     console.warn('[Geocode] No DATABASE_URL — skipping cache');
     const result = isReverse
       ? await geocodeReverse(lat, lng, mapsApiKey)
-      : await geocodeForward(address, mapsApiKey);
+      : await findPlace(address, mapsApiKey, validCityCenter);
 
     if (!result) {
       return res.status(404).json({ error: 'Geocoding returned no results' });
@@ -103,10 +111,10 @@ export default async function handler(req, res) {
     const sql = neon(databaseUrl);
     await ensureTable(sql);
 
-    // Call Google Maps first to get the canonical formatted_address
+    // Call Places API to find the exact place
     const result = isReverse
       ? await geocodeReverse(lat, lng, mapsApiKey)
-      : await geocodeForward(address, mapsApiKey);
+      : await findPlace(address, mapsApiKey, validCityCenter);
 
     if (!result) {
       return res.status(404).json({ error: 'Geocoding returned no results' });
@@ -146,7 +154,7 @@ export default async function handler(req, res) {
     console.error('[Geocode] Error:', error);
     const result = isReverse
       ? await geocodeReverse(lat, lng, mapsApiKey)
-      : await geocodeForward(address, mapsApiKey);
+      : await findPlace(address, mapsApiKey, validCityCenter);
 
     if (!result) {
       return res.status(404).json({ error: 'Geocoding returned no results' });

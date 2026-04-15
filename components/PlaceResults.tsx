@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Sparkles, Loader2, MapPin, ChevronDown, ChevronUp, Plus } from 'lucide-react';
 import { TripRecommendation } from '../types';
 import { PlaceCard } from './PlaceCard';
-import { TRANSLATIONS, CATEGORY_RULES } from '../constants';
+import { TRANSLATIONS } from '../constants';
+import { getDefaultKmlIcon } from '../helpers/kmlIconHelper';
 import { placeResultsStyles as s } from '../styles/places';
 
 interface PlaceResultsProps {
@@ -16,18 +17,27 @@ interface PlaceResultsProps {
   onViewOnMap?: (place: TripRecommendation) => void;
 }
 
+// Map from icon IDs back to display category names for grouping
+const ICON_TO_DISPLAY_CATEGORY: Record<string, string> = {
+  'icon-icecream': 'Ice Cream',
+  'icon-coffee': 'Coffee',
+  'icon-beach': 'Beach',
+  'icon-hotel': 'Hotels',
+  'icon-bars': 'Bar',
+  'icon-dining': 'Restaurants',
+  'icon-arts': 'Museums & Galleries',
+  'icon-shopping': 'Shopping',
+  'icon-camera': 'Tourist Attractions',
+};
+
 const CATEGORY_ORDER = [
   'Ice Cream', 'Tourist Attractions', 'Restaurants', 'Coffee',
   'Bar', 'Museums & Galleries', 'Shopping', 'Beach', 'Hotels',
 ];
 
 const normalizeCategory = (place: TripRecommendation): string => {
-  const text = `${place.category} ${place.title} ${place.description}`.toLowerCase();
-  for (const categoryName of CATEGORY_ORDER) {
-    const keywords = CATEGORY_RULES[categoryName];
-    if (keywords && keywords.some((keyword) => text.includes(keyword))) return categoryName;
-  }
-  return 'Tourist Attractions';
+  const iconId = getDefaultKmlIcon(place);
+  return ICON_TO_DISPLAY_CATEGORY[iconId] || 'Tourist Attractions';
 };
 
 export const PlaceResults: React.FC<PlaceResultsProps> = ({
