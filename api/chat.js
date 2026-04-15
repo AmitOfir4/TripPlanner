@@ -1,31 +1,66 @@
 // Vercel Serverless Function - Streaming AI Chat Travel Agent
 import { GoogleGenAI } from '@google/genai';
 
-// Words that should never be treated as city names
-const STOP_WORDS = new Set(['me','my','a','the','an','it','we','us','i','all','some','this','that','our','your','there','here','them','day','days','trip','plan','visit','see','want','need','like','show','find','get','know','make','take','give']);
+// Grammatical function words — structural words that can never be part of a real city name.
+// Checked against every word in the candidate (not just the first).
+const FUNCTION_WORDS = new Set([
+  'i','me','my','we','us','our','you','your','they','them','their',
+  'he','him','his','she','her','it','its',
+  'this','that','these','those','there','here',
+  'a','an','the','all','some','any','every','each'
+]);
+
+// Generic travel/action words that are only invalid when they are the entire candidate.
+// Multi-word candidates like "New York City" still pass even though "city" is in this set.
+const GENERIC_TRAVEL_WORDS = new Set([
+  'day','days','trip','trips','plan','visit','holiday','vacation',
+  'weekend','week','place','places','area','city','town','country',
+  'world','destination','guide','tour','itinerary'
+]);
+
+function isValidCityCandidate(candidate) {
+  const words = candidate.trim().split(/\s+/);
+  if (!words.length || words[0].length < 2) return false;
+  // Reject if any word is a grammatical function word (e.g. "the city", "my place")
+  if (words.some(w => FUNCTION_WORDS.has(w.toLowerCase()))) return false;
+  // Reject a single bare generic word like "trip", "day", "city"
+  if (words.length === 1 && GENERIC_TRAVEL_WORDS.has(words[0].toLowerCase())) return false;
+  return true;
+}
 
 function extractCityFromMessage(message) {
-  const tryMatch = (regex) => {
-    const m = message.match(regex);
-    if (!m) return null;
-    const candidate = m[1].trim();
-    if (STOP_WORDS.has(candidate.split(/\s+/)[0].toLowerCase())) return null;
-    return candidate;
-  };
+  // Ordered from most to least specific — first valid match wins
+  const latinPatterns = [
+    // 1) Trip intent: "trip to X", "traveling to X", "vacation in X"
+    /\b(?:trip|travel|vacation|holiday|fly(?:ing)?|going|headed)\s+(?:to|in)\s+([A-Za-z][A-Za-z\s]{1,25}?)(?=[,.]|\s*$|\s+[-–]|\s+(?:for|with|and|please|i|we|to|that|where|from|\d))/i,
+    // 2) Duration: "3 days in X", "weekend in X"
+    /\b(?:\d+\s*days?|weekend|week)\s+(?:in|at)\s+([A-Za-z][A-Za-z\s]{1,25}?)(?=[,.]|\s*$|\s+[-–]|\s+(?:for|with|and|please|i|we|to|that|\d))/i,
+    // 3) Category + in: "restaurants in X", "attractions in X"
+    /\b(?:restaurants?|hotels?|cafes?|bars?|clubs?|museums?|attractions?|places?|spots?|things?|activities)\s+in\s+([A-Za-z][A-Za-z\s]{1,25}?)(?=[,.]|\s*$|\s+[-–]|\s+(?:for|with|and|please|i|we))/i,
+    // 4) Visit/explore: "visiting X", "explore X"
+    /\b(?:visit(?:ing)?|explore|exploring|discover)\s+([A-Za-z][A-Za-z\s]{1,20}?)(?=[,.]|\s*$|\s+[-–]|\s+(?:for|with|and|please|i|we|to|that|\d))/i,
+    // 5) Generic "in/to X" — require uppercase start to reduce false positives
+    /\b(?:in|to|at)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)(?=[,.]|\s|$)/,
+  ];
 
-  // 1) Trip patterns: 'trip to X', 'travel to X', 'vacation in X'
-  return tryMatch(/\b(?:trip|travel|vacation|holiday|fly(?:ing)?|going|headed)\s+(?:to|in)\s+([A-Za-z][A-Za-z\s]{1,25}?)(?=[,.]|\s*$|\s+[-–]|\s+(?:for|with|and|please|i|we|to|that|where|from|\d))/i)
-    // 2) 'X days in Y', 'weekend in Y'
-    || tryMatch(/\b(?:\d+\s*days?|weekend|week)\s+(?:in|at)\s+([A-Za-z][A-Za-z\s]{1,25}?)(?=[,.]|\s*$|\s+[-–]|\s+(?:for|with|and|please|i|we|to|that|\d))/i)
-    // 3) Category + in: 'restaurants in X', 'attractions in X'
-    || tryMatch(/\b(?:restaurants?|hotels?|cafes?|bars?|clubs?|museums?|attractions?|places?|spots?|things?|activities)\s+in\s+([A-Za-z][A-Za-z\s]{1,25}?)(?=[,.]|\s*$|\s+[-–]|\s+(?:for|with|and|please|i|we))/i)
-    // 4) 'visit(ing) X', 'explore X'
-    || tryMatch(/\b(?:visit(?:ing)?|explore|exploring|discover)\s+([A-Za-z][A-Za-z\s]{1,20}?)(?=[,.]|\s*$|\s+[-–]|\s+(?:for|with|and|please|i|we|to|that|\d))/i)
-    // 5) Generic 'in/to X' — require uppercase start to avoid false positives
-    || tryMatch(/\b(?:in|to|at)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)(?=[,.]|\s|$)/)
-    // 6) Hebrew: 'מסעדות בXXX' or standalone 'בXXX'
-    || tryMatch(/(?:מסעדות?|בתי קפה|מלונות?|ברים|אטרקציות?|מקומות?)\s+ב([\u0590-\u05FF][\u0590-\u05FF\s]{1,20}?)(?=[,.]|\s*$)/u)
-    || tryMatch(/(?:^|\s)ב([\u0590-\u05FF][\u0590-\u05FF\s]{1,20}?)(?=[,.]|\s*$|\s+[-–])/u);
+  for (const pattern of latinPatterns) {
+    const m = message.match(pattern);
+    if (!m) continue;
+    const candidate = m[1].trim();
+    if (isValidCityCandidate(candidate)) return candidate;
+  }
+
+  // Hebrew patterns (validation not needed — Hebrew words are inherently non-function-words here)
+  const hebrewPatterns = [
+    /(?:מסעדות?|בתי קפה|מלונות?|ברים|אטרקציות?|מקומות?)\s+ב([\u0590-\u05FF][\u0590-\u05FF\s]{1,20}?)(?=[,.]|\s*$)/u,
+    /(?:^|\s)ב([\u0590-\u05FF][\u0590-\u05FF\s]{1,20}?)(?=[,.]|\s*$|\s+[-–])/u,
+  ];
+  for (const pattern of hebrewPatterns) {
+    const m = message.match(pattern);
+    if (m) return m[1].trim();
+  }
+
+  return null;
 }
 
 export default async function handler(req, res) {
