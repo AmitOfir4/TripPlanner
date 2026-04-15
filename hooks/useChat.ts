@@ -64,6 +64,9 @@ export const useChat = (
 
       if (city && !currentCity) {
         setCurrentCity(city);
+      } else if (!currentCity) {
+        const placeCity = places?.find((p) => p.city)?.city;
+        if (placeCity) setCurrentCity(placeCity);
       }
 
       setChatMessages((prev) =>
