@@ -3,3 +3,5 @@ export { useTripPlanner } from './useTripPlanner';
 export { useMapImport } from './useMapImport';
 export { useUserLocation } from './useUserLocation';
 export { useApiKey } from './useApiKey';
+export { useChat } from './useChat';
+export { useUpload } from './useUpload';

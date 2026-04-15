@@ -1,12 +1,11 @@
 import React from 'react';
-import { 
-  Layers, Search, ChevronRight, Trash2, Star, 
-  Download, Info, Upload, MapPin, Map
-} from 'lucide-react';
+import { Layers, Trash2, Star, Download, Info, Upload, MapPin, Map } from 'lucide-react';
 import { TripLayer, TripRecommendation } from '../types';
 import { PlaceImage } from './PlaceImage';
 import { TRANSLATIONS } from '../constants';
 import { GoogleUser } from '../googleAuthService';
+import { buildGoogleMapsUrl } from '../helpers/urlHelper';
+import { savedSidebarStyles as s } from '../styles/places';
 
 interface SavedPlacesSidebarProps {
   savedLayers: TripLayer[];
@@ -20,60 +19,42 @@ interface SavedPlacesSidebarProps {
 }
 
 export const SavedPlacesSidebar: React.FC<SavedPlacesSidebarProps> = ({
-  savedLayers,
-  googleUser,
-  enriching = false,
-  onRemovePlace,
-  onDownload,
-  onUploadToDrive,
-  onEnrichSelected,
-  onViewInMap
+  savedLayers, googleUser, enriching = false,
+  onRemovePlace, onDownload, onUploadToDrive, onEnrichSelected, onViewInMap,
 }) => {
   const totalPlaces = savedLayers.reduce((acc, l) => acc + l.places.length, 0);
 
   return (
-    <section className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xl shadow-slate-900/5">
+    <section className={s.wrapper}>
       {/* Header strip */}
-      <div className="bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-5">
+      <div className={s.headerStrip}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-teal-500/20 rounded-xl flex items-center justify-center">
+            <div className={s.headerIcon}>
               <Layers className="w-4.5 h-4.5 text-teal-400" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white tracking-tight">
-                {TRANSLATIONS.savedMap}
-              </h3>
-              <p className="text-xs text-slate-400">Your trip collection</p>
+              <h3 className={s.headerTitle}>{TRANSLATIONS.savedMap}</h3>
+              <p className={s.headerSubtitle}>Your trip collection</p>
             </div>
           </div>
           {savedLayers.length > 0 && (
-            <div className="bg-teal-500/20 text-teal-300 text-[11px] font-bold px-3 py-1 rounded-full border border-teal-500/30">
+            <div className={s.headerBadge}>
               {totalPlaces} spot{totalPlaces !== 1 ? 's' : ''}
             </div>
           )}
         </div>
       </div>
 
-      <div className="p-6 space-y-6">
-        <ActionButtons
-          hasPlaces={savedLayers.length > 0}
-          googleUser={googleUser}
-          onDownload={onDownload}
-          onUploadToDrive={onUploadToDrive}
-        />
+      <div className={s.body}>
+        <ActionButtons hasPlaces={savedLayers.length > 0} googleUser={googleUser} onDownload={onDownload} onUploadToDrive={onUploadToDrive} />
 
         <div className="space-y-8">
           {savedLayers.length === 0 ? (
             <EmptyState />
           ) : (
             savedLayers.map((layer, idx) => (
-              <LayerSection
-                key={idx}
-                layer={layer}
-                onRemovePlace={onRemovePlace}
-                onViewInMap={onViewInMap}
-              />
+              <LayerSection key={idx} layer={layer} onRemovePlace={onRemovePlace} onViewInMap={onViewInMap} />
             ))
           )}
         </div>
@@ -83,14 +64,12 @@ export const SavedPlacesSidebar: React.FC<SavedPlacesSidebarProps> = ({
 };
 
 const EmptyState: React.FC = () => (
-  <div className="flex flex-col items-center justify-center text-center py-16">
-    <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center mb-4 border border-slate-100">
+  <div className={s.emptyWrap}>
+    <div className={s.emptyIcon}>
       <Map className="w-7 h-7 text-slate-300" />
     </div>
-    <p className="text-sm font-semibold text-slate-400">
-      {TRANSLATIONS.noPlaces}
-    </p>
-    <p className="text-xs text-slate-300 mt-1">Start chatting to add places</p>
+    <p className={s.emptyTitle}>{TRANSLATIONS.noPlaces}</p>
+    <p className={s.emptySubtitle}>Start chatting to add places</p>
   </div>
 );
 
@@ -112,16 +91,12 @@ const LayerSection: React.FC<LayerSectionProps> = ({ layer, onRemovePlace, onVie
 
   return (
     <div className="space-y-4">
-      {/* Layer name row */}
       <div className="flex items-center gap-3">
-        <div className="w-2 h-2 bg-teal-500 rounded-full shrink-0" />
-        <span className="text-xs font-bold text-teal-700 uppercase tracking-widest">
-          {layer.name}
-        </span>
-        <div className="flex-1 h-px bg-slate-100" />
-        <span className="text-[10px] font-semibold text-slate-400">{layer.places.length} places</span>
+        <div className={s.layerDot} />
+        <span className={s.layerName}>{layer.name}</span>
+        <div className={s.layerDivider} />
+        <span className={s.layerCount}>{layer.places.length} places</span>
       </div>
-
       <div className="space-y-5">
         {sortedCategories.map((category) => (
           <CategorySection
@@ -147,21 +122,14 @@ interface CategorySectionProps {
 }
 
 const CategorySection: React.FC<CategorySectionProps> = ({
-  category,
-  places,
-  layerName,
-  onRemovePlace,
-  onViewInMap
+  category, places, layerName, onRemovePlace, onViewInMap,
 }) => (
   <div className="space-y-2">
     <div className="flex items-center gap-2 px-1">
-      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-        {category}
-      </span>
-      <div className="flex-1 h-px bg-slate-100" />
-      <span className="text-[10px] text-slate-400 font-medium">{places.length}</span>
+      <span className={s.categorySectionLabel}>{category}</span>
+      <div className={s.layerDivider} />
+      <span className={`${s.layerCount}`}>{places.length}</span>
     </div>
-
     <div className="grid grid-cols-1 gap-2">
       {places.map((place, pIdx) => (
         <SavedPlaceCard
@@ -184,57 +152,30 @@ interface SavedPlaceCardProps {
 }
 
 const SavedPlaceCard: React.FC<SavedPlaceCardProps> = ({ place, index, onRemove, onViewInMap }) => (
-  <div className="group flex items-start gap-3 p-3 bg-slate-50/60 rounded-xl border border-slate-100 hover:bg-white hover:border-teal-100 hover:shadow-md hover:shadow-teal-900/5 transition-all place-card-hover">
-    <div className="w-11 h-11 rounded-xl overflow-hidden shrink-0 ring-1 ring-slate-200">
+  <div className={s.savedCard}>
+    <div className={s.savedCardImg}>
       <PlaceImage place={place} index={index} />
     </div>
-
     <div className="flex-1 min-w-0">
-      <h5
-        onClick={() => onViewInMap?.(place)}
-        className="font-semibold text-slate-900 text-sm truncate cursor-pointer hover:text-teal-600 transition-colors leading-tight"
-        title="Click to view on map"
-      >
+      <h5 onClick={() => onViewInMap?.(place)} className={s.savedCardTitle} title="Click to view on map">
         {place.title}
       </h5>
       <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-        <span className="text-[10px] font-semibold text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded-full border border-teal-100">
-          {place.category}
-        </span>
+        <span className={s.savedCardCategory}>{place.category}</span>
         {place.rating && (
-          <span className="flex items-center gap-0.5 text-[10px] font-semibold text-amber-500">
+          <span className={s.savedCardRating}>
             <Star className="w-2.5 h-2.5 fill-amber-400 stroke-amber-400" />
             {place.rating}
           </span>
         )}
       </div>
-      {place.description && (
-        <p className="text-[11px] text-slate-500 mt-1 leading-relaxed line-clamp-2">
-          {place.description}
-        </p>
-      )}
-      <a
-        href={
-          place.mapUrl ||
-          (place.placeId
-            ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.title)}&query_place_id=${place.placeId}`
-            : place.lat && place.lng
-            ? `https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`
-            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.title)}`)
-        }
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-medium text-slate-400 hover:text-teal-600 transition-colors"
-      >
+      {place.description && <p className={s.savedCardDescription}>{place.description}</p>}
+      <a href={buildGoogleMapsUrl(place)} target="_blank" rel="noreferrer" className={s.savedCardMapLink}>
         <MapPin className="w-3 h-3" />
         Google Maps
       </a>
     </div>
-
-    <button
-      onClick={onRemove}
-      className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-    >
+    <button onClick={onRemove} className={s.savedCardRemoveBtn}>
       <Trash2 className="w-3.5 h-3.5" />
     </button>
   </div>
@@ -247,36 +188,18 @@ interface ActionButtonsProps {
   onUploadToDrive: () => void;
 }
 
-const ActionButtons: React.FC<ActionButtonsProps> = ({
-  hasPlaces,
-  googleUser,
-  onDownload,
-  onUploadToDrive
-}) => (
+const ActionButtons: React.FC<ActionButtonsProps> = ({ hasPlaces, googleUser, onDownload, onUploadToDrive }) => (
   <div className="space-y-3">
-    {/* Tip banner */}
-    <div className="flex gap-3 bg-sky-50 border border-sky-100 rounded-xl p-3.5">
+    <div className={s.tipBanner}>
       <Info className="w-4 h-4 text-sky-500 shrink-0 mt-0.5" />
-      <p className="text-xs text-sky-700 leading-relaxed">
-        {TRANSLATIONS.layersTip}
-      </p>
+      <p className={s.tipText}>{TRANSLATIONS.layersTip}</p>
     </div>
-
-    <button
-      disabled={!hasPlaces}
-      onClick={onDownload}
-      className="w-full bg-teal-600 hover:bg-teal-700 disabled:bg-slate-100 disabled:text-slate-400 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2.5 transition-all shadow-md shadow-teal-200/60 active:scale-[0.98] text-sm"
-    >
+    <button disabled={!hasPlaces} onClick={onDownload} className={s.downloadBtn}>
       <Download className="w-4 h-4" />
       {TRANSLATIONS.downloadKml}
     </button>
-
     {googleUser && (
-      <button
-        disabled={!hasPlaces}
-        onClick={onUploadToDrive}
-        className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-100 disabled:text-slate-400 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2.5 transition-all shadow-md shadow-emerald-200/60 active:scale-[0.98] text-sm"
-      >
+      <button disabled={!hasPlaces} onClick={onUploadToDrive} className={s.uploadBtn}>
         <Upload className="w-4 h-4" />
         Upload to Google Maps
       </button>

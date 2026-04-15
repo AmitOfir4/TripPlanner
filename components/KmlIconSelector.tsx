@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { AVAILABLE_KML_ICONS } from '../constants';
+import { kmlIconSelectorStyles as s } from '../styles/modals';
 
 interface KmlIconSelectorProps {
   currentIconId: string;
@@ -9,18 +10,14 @@ interface KmlIconSelectorProps {
 
 export const KmlIconSelector: React.FC<KmlIconSelectorProps> = ({
   currentIconId,
-  onIconChange
+  onIconChange,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  
-  const currentIcon = AVAILABLE_KML_ICONS.find(icon => icon.id === currentIconId) || AVAILABLE_KML_ICONS[0];
+  const currentIcon = AVAILABLE_KML_ICONS.find((icon) => icon.id === currentIconId) || AVAILABLE_KML_ICONS[0];
 
   return (
     <div className="w-full">
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center gap-2 px-3 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 transition-all w-full justify-between"
-      >
+      <button onClick={() => setIsExpanded(!isExpanded)} className={s.triggerBtn}>
         <div className="flex items-center gap-2">
           <img src={currentIcon.url} alt={currentIcon.name} className="w-4 h-4" />
           <span>Icon: {currentIcon.name}</span>
@@ -29,11 +26,9 @@ export const KmlIconSelector: React.FC<KmlIconSelectorProps> = ({
       </button>
 
       {isExpanded && (
-        <div className="mt-2 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-            Select Icon
-          </div>
-          <div className="grid grid-cols-4 gap-2">
+        <div className={s.dropdown}>
+          <div className={s.dropdownLabel}>Select Icon</div>
+          <div className={s.grid}>
             {AVAILABLE_KML_ICONS.map((icon) => (
               <button
                 key={icon.id}
@@ -41,15 +36,11 @@ export const KmlIconSelector: React.FC<KmlIconSelectorProps> = ({
                   onIconChange(icon.id);
                   setIsExpanded(false);
                 }}
-                className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-all ${
-                  icon.id === currentIconId
-                    ? 'bg-teal-100 border-2 border-teal-500'
-                    : 'bg-white border-2 border-transparent hover:border-slate-300'
-                }`}
+                className={s.iconBtn(icon.id === currentIconId)}
                 title={icon.name}
               >
-                <img src={icon.url} alt={icon.name} className="w-6 h-6" />
-                <span className="text-[9px] font-medium text-slate-600 text-center leading-tight">{icon.name}</span>
+                <img src={icon.url} alt={icon.name} className={s.iconImg} />
+                <span className={s.iconName}>{icon.name}</span>
               </button>
             ))}
           </div>

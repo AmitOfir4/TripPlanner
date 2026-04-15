@@ -1,0 +1,1 @@
+export { PlaceChip } from './PlaceChip';
