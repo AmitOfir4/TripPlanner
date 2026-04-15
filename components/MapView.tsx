@@ -7,6 +7,7 @@ import { AVAILABLE_KML_ICONS } from '../constants';
 import { KmlIconSelector } from './KmlIconSelector';
 import { geocodeAddress, reverseGeocode } from '../services/geocodeService';
 import { getDefaultKmlIcon } from '../helpers/kmlIconHelper';
+import { buildGoogleMapsUrl } from '../helpers/urlHelper';
 import { MapController } from './map/MapController';
 import { MapSidebar } from './map/MapSidebar';
 import { mapViewStyles as vs, mapInfoWindowStyles as iw } from '../styles/map';
@@ -37,7 +38,7 @@ export const MapView: React.FC<MapViewProps> = ({
   const [geocodedFocusedPlace, setGeocodedFocusedPlace] = useState<{ place: TripRecommendation; lat: number; lng: number } | null>(null);
   const [geocodedSavedPlaces, setGeocodedSavedPlaces] = useState<Record<string, { lat: number; lng: number }>>({});
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<google.maps.GeocoderResult[]>([]);
+  const [searchResults, setSearchResults] = useState<google.maps.places.AutocompletePrediction[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isAddingToTrip, setIsAddingToTrip] = useState(false);
   const [editingIconForPlace, setEditingIconForPlace] = useState<string | null>(null);
@@ -60,27 +61,34 @@ export const MapView: React.FC<MapViewProps> = ({
 
     searchTimeoutRef.current = setTimeout(() => {
       setIsSearching(true);
-      const geocoder = new google.maps.Geocoder();
-      geocoder.geocode({ address: searchQuery }, (results, status) => {
+      const service = new google.maps.places.AutocompleteService();
+      service.getPlacePredictions({ input: searchQuery }, (predictions, status) => {
         setIsSearching(false);
-        setSearchResults(status === 'OK' && results ? results.slice(0, 5) : []);
+        setSearchResults(
+          status === google.maps.places.PlacesServiceStatus.OK && predictions ? predictions : []
+        );
       });
-    }, 500);
+    }, 300);
 
     return () => { if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current); };
   }, [searchQuery, city]);
 
-  const handleSelectSearchResult = (result: google.maps.GeocoderResult) => {
-    const location = result.geometry.location;
-    setSelectedPlace({
-      title: result.formatted_address || result.address_components[0]?.long_name || 'Unknown Place',
-      description: result.formatted_address || '',
-      category: 'Other',
-      lat: location.lat(),
-      lng: location.lng(),
-    });
+  const handleSelectSearchResult = (prediction: google.maps.places.AutocompletePrediction) => {
     setSearchResults([]);
     setSearchQuery('');
+    const geocoder = new google.maps.Geocoder();
+    geocoder.geocode({ placeId: prediction.place_id }, (results, status) => {
+      if (status === 'OK' && results && results[0]) {
+        const location = results[0].geometry.location;
+        setSelectedPlace({
+          title: prediction.structured_formatting.main_text,
+          description: prediction.description,
+          category: 'Other',
+          lat: location.lat(),
+          lng: location.lng(),
+        });
+      }
+    });
   };
 
   // Geocode focused place
@@ -158,10 +166,10 @@ export const MapView: React.FC<MapViewProps> = ({
             )}
             {!isSearching && searchResults.length > 0 && (
               <div className={vs.searchResultsDropdown}>
-                {searchResults.map((result, idx) => (
-                  <button key={idx} onClick={() => handleSelectSearchResult(result)} className={vs.searchResultItem}>
-                    <div className={vs.searchResultTitle}>{result.address_components[0]?.long_name || result.formatted_address}</div>
-                    <div className={vs.searchResultSubtitle}>{result.formatted_address}</div>
+                {searchResults.map((prediction) => (
+                  <button key={prediction.place_id} onClick={() => handleSelectSearchResult(prediction)} className={vs.searchResultItem}>
+                    <div className={vs.searchResultTitle}>{prediction.structured_formatting.main_text}</div>
+                    <div className={vs.searchResultSubtitle}>{prediction.structured_formatting.secondary_text}</div>
                   </button>
                 ))}
               </div>
@@ -194,7 +202,7 @@ export const MapView: React.FC<MapViewProps> = ({
 
         <div className={vs.mapArea}>
           {apiKey ? (
-            <APIProvider apiKey={apiKey}>
+            <APIProvider apiKey={apiKey} libraries={['places']}>
               <Map
                 mapId="trip-planner-map"
                 defaultCenter={defaultCenter}
@@ -319,9 +327,7 @@ export const MapView: React.FC<MapViewProps> = ({
                         )}
                       </div>
                       <a
-                        href={selectedPlace.lat && selectedPlace.lng
-                          ? `https://www.google.com/maps/search/?api=1&query=${selectedPlace.lat},${selectedPlace.lng}`
-                          : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedPlace.title + ', ' + city)}`}
+                        href={buildGoogleMapsUrl(selectedPlace)}
                         target="_blank" rel="noreferrer" className={iw.mapsLink}
                       >
                         <ExternalLink className="w-3 h-3" /> Open in Google Maps
@@ -385,7 +391,9 @@ export const MapView: React.FC<MapViewProps> = ({
                           {isAddingToTrip ? 'Adding...' : 'Add to Trip'}
                         </button>
                       )}
-                      <a href={`https://www.google.com/maps/search/?api=1&query=${clickedLocation.lat},${clickedLocation.lng}`} target="_blank" rel="noreferrer" className={iw.clickedMapsLink}>
+                      <a href={clickedLocation.name
+                          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(clickedLocation.name)}&center=${clickedLocation.lat},${clickedLocation.lng}`
+                          : `https://www.google.com/maps/search/?api=1&query=${clickedLocation.lat},${clickedLocation.lng}`} target="_blank" rel="noreferrer" className={iw.clickedMapsLink}>
                         <ExternalLink className="w-3 h-3" /> Open in Google Maps
                       </a>
                     </div>

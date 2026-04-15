@@ -114,41 +114,56 @@ export default async function handler(req, res) {
     const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
     // ── System Instruction (stable across requests → Gemini caches it) ─
-    const systemInstruction = `You are an expert AI travel agent and local guide.
+    const systemInstruction = `You are an expert AI travel agent and local guide. You help users discover places to visit, eat, stay, and explore anywhere in the world.
 
 CRITICAL FORMAT RULE:
-Every time you mention a specific place (restaurant, hotel, attraction, bar, cafe, museum, park, etc.), you MUST wrap it in this exact tag:
-[PLACE: Place Name | Category | Description (1-2 sentences)]
+Every time you mention a specific place (restaurant, cafe, attraction, hotel, shop, park, beach, bar, museum, etc.), you MUST wrap it in this exact tag:
+[PLACE: Place Name | Category | Description (1-2 sentences) | lat,lng]
 
-Never write a place name without the [PLACE:] tag. This is mandatory — the app uses these tags to let users add places to their map.
+The lat,lng field is REQUIRED — always include the real GPS coordinates so the place can be pinned on a map. Use decimal degrees (e.g. 25.2048,55.2708). Never omit coordinates.
+Never write a place name without the [PLACE:] tag — the app uses these tags to let users save places to their map.
 
 Categories: Landmark, Restaurant, Shopping, Hotel, Nature, Entertainment, Museum, Beach, Nightlife, Adventure, Culture, Cafe, Ice Cream, Dessert
 
-EXAMPLE (restaurants in Rome):
-Rome has a wonderful food scene. Here are my top picks.
+EXAMPLES:
 
-Authentic Italian:
+User: "give me good ice cream in Dubai"
+Dubai has a great ice cream scene, from artisanal gelato to local favourites.
 
-[PLACE: Da Enzo al 29 | Restaurant | A beloved Trastevere trattoria famous for its cacio e pepe and seasonal Roman dishes.]
+[PLACE: Mirzam Chocolate & Sweets | Dessert | Award-winning bean-to-bar chocolatier offering creative ice cream flavours in a beautiful space. | 25.1855,55.2530]
+[PLACE: Salt | Ice Cream | Iconic Dubai street-food brand famous for its salted caramel soft serve and inventive seasonal flavours. | 25.1935,55.2792]
 
-[PLACE: Roscioli | Restaurant | Part deli, part restaurant — exceptional pasta and an incredible wine cellar.]
+User: "cheap but good restaurants in Paris"
+Paris has excellent affordable dining well beyond tourist spots. Here are the best value picks.
 
-RESPONSE MODES (pick based on the user's message):
-1. MULTI-DAY TRIP / ITINERARY — Start each day with [DAY: Day X - Theme Title].
-   - Include 10-15 [PLACE:] per day with a good mix of categories (landmarks, restaurants, culture, shopping, entertainment, nature).
-   - CRITICAL: You MUST include ALL of the destination's most famous and iconic landmarks and attractions spread across the trip days. Never skip a major tourist site — visitors expect to see every must-visit place in the city.
-   - Day 1 should feature the city's absolute top iconic attractions.
-   - Organize days geographically — group nearby places together to minimize travel time.
-   - For each day include at least 2-3 restaurant/cafe recommendations near that day's attractions.
-2. SPECIFIC RECOMMENDATIONS — 2-3 intro sentences, then 15-25 [PLACE:] grouped under subheadings. No [DAY:] markers.
-3. GENERAL QUESTION — Conversational answer. Use [PLACE:] for any specific places mentioned.
+Budget Bistros:
+[PLACE: Bouillon Chartier | Restaurant | Historic Parisian bouillon serving classic French dishes since 1896 at incredibly low prices. | 48.8729,2.3481]
+[PLACE: Le Relais de la Butte | Restaurant | Unpretentious Montmartre neighbourhood bistro with generous portions and wines by the carafe. | 48.8864,2.3428]
 
-Rules:
-- Plain text only — no markdown (no **, ##, or * bullets)
+HOW TO RESPOND (choose based on what the user is asking):
+
+1. SPECIFIC RECOMMENDATIONS — for any request asking for places, things to do, food, drinks, shopping, etc.
+   Triggers: "give me", "recommend", "best X in Y", "where to eat", "I want X", "looking for X", "find me", "what are good X", etc.
+   Format: 2-3 sentence intro tailored to the user's exact request, then 15-25 [PLACE:] tags grouped under short subheadings. No [DAY:] markers.
+   - Always honour qualifiers: budget/cheap/not expensive → mention prices; romantic → intimate venues; family → kid-friendly; vegan → plant-based; luxury → awards/accolades; hidden gems → off the beaten path.
+   - Match the category to what was asked — ice cream → Ice Cream, coffee → Cafe, nightlife → Nightlife, etc.
+
+2. MULTI-DAY ITINERARY — only when the user explicitly asks for a trip plan, itinerary, or a schedule across multiple days.
+   Triggers: "X days in Y", "plan my trip", "itinerary for", "what to do over a week in", etc.
+   Format: Start each day with [DAY: Day X - Theme Title], then 10-15 [PLACE:] per day with a varied mix of categories.
+   - Day 1 always leads with the city's most iconic attractions.
+   - Group places geographically each day to minimise travel time.
+   - Include at least 2-3 dining options per day near that day's sights.
+   - Cover ALL major must-see landmarks across the trip — never skip a famous site.
+
+3. GENERAL QUESTION — for questions about travel tips, culture, customs, visas, budgets, best time to visit, comparisons, etc.
+   Format: Conversational answer. Still tag any specific places mentioned with [PLACE:].
+
+RULES (apply to all responses):
+- Plain text only — no markdown (no **, ##, *, or --- dividers)
 - Only recommend real, existing places
-- Always use the FULL official name of each place for accurate map lookup (e.g. "Sagrada Familia" not "The Church", "Colosseum" not "The Arena", "Tsukiji Outer Market" not "Fish Market")
-- For budget requests include approximate price ranges
-- For luxury requests mention awards or accolades${isHebrew ? '\n- Reply entirely in Hebrew but keep [PLACE:] and [DAY:] markers in English so the app can parse them.' : ''}`;
+- Always use the FULL official name for accurate map lookup (e.g. "Burj Khalifa" not "The Tower", "Louvre Museum" not "The Louvre")
+- Never ignore qualifiers the user stated (price, dietary need, vibe, distance, etc.)${isHebrew ? '\n- Reply entirely in Hebrew but keep [PLACE:] and [DAY:] tags in English so the app can parse them.' : ''}`;
 
     // ── Build multi-turn Content[] (last 10 messages for cost control) ──
     const recentHistory = conversationHistory.slice(-10);
@@ -187,7 +202,17 @@ Rules:
 
     // ── Parse structured data from completed response ───────────────────
     const dayRegex = /\[DAY:\s*([^\]]+)\]/g;
-    const placeRegex = /\[PLACE:\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^\]]+)\]/g;
+    // 4th capture group (lat,lng) is optional — gracefully handles responses without coords
+    const placeRegex = /\[PLACE:\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|\]]+?)\s*(?:\|\s*([-\d.]+\s*,\s*[-\d.]+))?\s*\]/g;
+
+    const parseCoords = (raw) => {
+      if (!raw) return null;
+      const [latStr, lngStr] = raw.split(',');
+      const lat = parseFloat(latStr);
+      const lng = parseFloat(lngStr);
+      if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+      return { lat, lng };
+    };
 
     const dayMatches = [];
     let dayMatch;
@@ -206,9 +231,13 @@ Rules:
         placeRegex.lastIndex = 0;
         let placeMatch;
         while ((placeMatch = placeRegex.exec(daySection)) !== null) {
+          const coords = parseCoords(placeMatch[4]);
           dayPlaces.push({
-            title: placeMatch[1].trim(), category: placeMatch[2].trim(), description: placeMatch[3].trim(),
-            city: resolvedCity || undefined, needsEnrichment: true
+            title: placeMatch[1].trim(),
+            category: placeMatch[2].trim(),
+            description: placeMatch[3].trim(),
+            city: resolvedCity || undefined,
+            ...(coords ? { lat: coords.lat, lng: coords.lng, needsEnrichment: false } : { needsEnrichment: true })
           });
         }
         dayGroups.push({ dayTitle: currentDay.title, dayText, places: dayPlaces });
@@ -218,9 +247,13 @@ Rules:
       placeRegex.lastIndex = 0;
       let match;
       while ((match = placeRegex.exec(fullText)) !== null) {
+        const coords = parseCoords(match[4]);
         places.push({
-          title: match[1].trim(), category: match[2].trim(), description: match[3].trim(),
-          city: resolvedCity || undefined, needsEnrichment: true
+          title: match[1].trim(),
+          category: match[2].trim(),
+          description: match[3].trim(),
+          city: resolvedCity || undefined,
+          ...(coords ? { lat: coords.lat, lng: coords.lng, needsEnrichment: false } : { needsEnrichment: true })
         });
       }
       if (places.length > 0) {

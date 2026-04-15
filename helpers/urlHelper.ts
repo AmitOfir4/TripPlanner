@@ -6,7 +6,7 @@ export const buildGoogleMapsUrl = (place: TripRecommendation): string => {
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.title)}&query_place_id=${place.placeId}`;
   }
   if (place.lat && place.lng) {
-    return `https://www.google.com/maps/search/?api=1&query=${place.lat},${place.lng}`;
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.title)}&center=${place.lat},${place.lng}`;
   }
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.title)}`;
 };
