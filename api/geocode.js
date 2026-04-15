@@ -21,7 +21,7 @@ function normalizeKey(text) {
   return text.toLowerCase().trim().replace(/\s+/g, ' ');
 }
 
-function normalizeReverseKey(lat, lng) {
+function clnormalizeReverseKey(lat, lng) {
   return `rev:${lat.toFixed(4)},${lng.toFixed(4)}`;
 }
 

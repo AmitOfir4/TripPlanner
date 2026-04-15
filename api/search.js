@@ -50,7 +50,7 @@ export default async function handler(req, res) {
 Format each place as:
 Name | Category
 
-Categories: Landmark, Restaurant, Shopping, Hotel, Nature, Entertainment, Museum, Beach, Nightlife, Adventure, Culture, Cafe
+Categories: Landmark, Restaurant, Shopping, Hotel, Nature, Entertainment, Museum, Beach, Nightlife, Adventure, Culture, Cafe, Ice Cream, Dessert
 
 Example:
 Burj Khalifa | Landmark

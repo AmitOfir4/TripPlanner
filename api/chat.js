@@ -87,7 +87,7 @@ Every time you mention a specific place (restaurant, hotel, attraction, bar, caf
 
 Never write a place name without the [PLACE:] tag. This is mandatory — the app uses these tags to let users add places to their map.
 
-Categories: Landmark, Restaurant, Shopping, Hotel, Nature, Entertainment, Museum, Beach, Nightlife, Adventure, Culture, Cafe
+Categories: Landmark, Restaurant, Shopping, Hotel, Nature, Entertainment, Museum, Beach, Nightlife, Adventure, Culture, Cafe, Ice Cream, Dessert
 
 EXAMPLE (restaurants in Rome):
 Rome has a wonderful food scene. Here are my top picks.
