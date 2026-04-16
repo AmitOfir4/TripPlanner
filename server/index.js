@@ -27,6 +27,84 @@ function extractCityFromMessage(message) {
     || tryMatch(/(?:^|\s)ב([\u0590-\u05FF][\u0590-\u05FF\s]{1,20}?)(?=[,.]|\s*$|\s+[-–])/u);
 }
 
+
+// ── Shared geocoding helpers (used by /api/chat and /api/geocode) ───────
+async function findPlaceByName(query, apiKey, cityCenter) {
+  let url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=geometry,formatted_address,name,place_id&key=${apiKey}`;
+  if (cityCenter && cityCenter.lat && cityCenter.lng) {
+    url += `&locationbias=circle:50000@${cityCenter.lat},${cityCenter.lng}`;
+  }
+  const resp = await fetch(url);
+  const data = await resp.json();
+  if (data.status === 'OK' && data.candidates && data.candidates[0]) {
+    const c = data.candidates[0];
+    return {
+      lat: c.geometry.location.lat, lng: c.geometry.location.lng,
+      formatted_address: c.formatted_address || '', place_name: c.name || '', place_id: c.place_id || ''
+    };
+  }
+  return null;
+}
+
+
+
+// ── Geocode cache helpers (Neon Postgres) ───────────────────────────────
+const CACHE_TTL_DAYS = 365;
+
+function normalizeKey(text) {
+  return text.toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
+async function ensureGeoTable(sql) {
+  await sql`
+    CREATE TABLE IF NOT EXISTS geocode_cache (
+      id SERIAL PRIMARY KEY,
+      query_key TEXT UNIQUE NOT NULL,
+      query_type TEXT NOT NULL DEFAULT 'forward',
+      lat DOUBLE PRECISION,
+      lng DOUBLE PRECISION,
+      formatted_address TEXT,
+      place_name TEXT,
+      place_id TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `;
+  await sql`ALTER TABLE geocode_cache ADD COLUMN IF NOT EXISTS place_id TEXT`.catch(() => {});
+}
+
+async function cachedFindPlace(sql, query, apiKey, cityCenter) {
+  if (!sql) return findPlaceByName(query, apiKey, cityCenter);
+  const key = normalizeKey(query);
+  try {
+    const cached = await sql`
+      SELECT lat, lng, formatted_address, place_name, place_id
+      FROM geocode_cache
+      WHERE query_key = ${key}
+        AND created_at > NOW() - INTERVAL '365 days'
+      LIMIT 1
+    `;
+    if (cached.length > 0) {
+      console.log('[Chat/Geocode] Cache HIT: ' + key);
+      return { lat: cached[0].lat, lng: cached[0].lng, formatted_address: cached[0].formatted_address, place_name: cached[0].place_name, place_id: cached[0].place_id || '' };
+    }
+    const result = await findPlaceByName(query, apiKey, cityCenter);
+    if (!result) return null;
+    console.log('[Chat/Geocode] Cache MISS → stored: ' + key);
+    await sql`
+      INSERT INTO geocode_cache (query_key, query_type, lat, lng, formatted_address, place_name, place_id)
+      VALUES (${key}, 'forward', ${result.lat}, ${result.lng}, ${result.formatted_address}, ${result.place_name}, ${result.place_id || null})
+      ON CONFLICT (query_key) DO UPDATE SET
+        lat = EXCLUDED.lat, lng = EXCLUDED.lng,
+        formatted_address = EXCLUDED.formatted_address, place_name = EXCLUDED.place_name,
+        place_id = EXCLUDED.place_id, created_at = NOW()
+    `;
+    return result;
+  } catch (err) {
+    console.warn('[Chat/Geocode] Cache error, falling back to API:', err.message);
+    return findPlaceByName(query, apiKey, cityCenter);
+  }
+}
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -564,13 +642,15 @@ RULES (apply to all responses):
         placeRegex.lastIndex = 0;
         let placeMatch;
         while ((placeMatch = placeRegex.exec(daySection)) !== null) {
-          const coords = parseCoords(placeMatch[4]);
+          const geminiCoords = parseCoords(placeMatch[4]);
           dayPlaces.push({
             title: placeMatch[1].trim(),
             category: placeMatch[2].trim(),
             description: placeMatch[3].trim(),
             city: resolvedCity || undefined,
-            ...(coords ? { lat: coords.lat, lng: coords.lng, needsEnrichment: false } : { needsEnrichment: true })
+            _geminiLat: geminiCoords ? geminiCoords.lat : undefined,
+            _geminiLng: geminiCoords ? geminiCoords.lng : undefined,
+            needsEnrichment: true
           });
         }
         dayGroups.push({ dayTitle: currentDay.title, dayText, places: dayPlaces });
@@ -580,13 +660,15 @@ RULES (apply to all responses):
       placeRegex.lastIndex = 0;
       let match;
       while ((match = placeRegex.exec(fullText)) !== null) {
-        const coords = parseCoords(match[4]);
+        const geminiCoords = parseCoords(match[4]);
         places.push({
           title: match[1].trim(),
           category: match[2].trim(),
           description: match[3].trim(),
           city: resolvedCity || undefined,
-          ...(coords ? { lat: coords.lat, lng: coords.lng, needsEnrichment: false } : { needsEnrichment: true })
+          _geminiLat: geminiCoords ? geminiCoords.lat : undefined,
+          _geminiLng: geminiCoords ? geminiCoords.lng : undefined,
+          needsEnrichment: true
         });
       }
       if (places.length > 0) {
@@ -610,6 +692,59 @@ RULES (apply to all responses):
       responseCity = cityMatch2 ? cityMatch2[1] : '';
     }
 
+
+    // ── Geocode all places via Google Places API (with Postgres cache) ──
+    const mapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (mapsApiKey && resolvedCity) {
+      const allPlaces = dayGroups.flatMap(g => g.places);
+      if (allPlaces.length > 0) {
+        // Set up DB cache connection
+        let sql = null;
+        if (process.env.DATABASE_URL) {
+          try {
+            sql = neon(process.env.DATABASE_URL);
+            await ensureGeoTable(sql);
+          } catch (e) {
+            console.warn('[Chat] DB cache init failed, geocoding without cache:', e.message);
+          }
+        }
+
+        const cityCenterResult = await cachedFindPlace(sql, resolvedCity, mapsApiKey).catch(() => null);
+        const cityCenter = cityCenterResult ? { lat: cityCenterResult.lat, lng: cityCenterResult.lng } : null;
+
+        console.log('[Chat] Geocoding ' + allPlaces.length + ' places' + (sql ? ' (with cache)' : ' (no cache)') + '...');
+
+        await Promise.all(allPlaces.map(async (place) => {
+          try {
+            const searchQuery = place.title + ', ' + (place.city || resolvedCity);
+            const result = await cachedFindPlace(sql, searchQuery, mapsApiKey, cityCenter);
+            if (result) {
+              place.lat = result.lat;
+              place.lng = result.lng;
+              place.placeId = result.place_id || '';
+              place.needsEnrichment = false;
+            } else if (place._geminiLat != null && place._geminiLng != null) {
+              place.lat = place._geminiLat;
+              place.lng = place._geminiLng;
+              place.needsEnrichment = false;
+            }
+          } catch (err) {
+            console.warn('[Chat] Failed to geocode ' + place.title + ':', err.message);
+            if (place._geminiLat != null && place._geminiLng != null) {
+              place.lat = place._geminiLat;
+              place.lng = place._geminiLng;
+              place.needsEnrichment = false;
+            }
+          }
+          delete place._geminiLat;
+          delete place._geminiLng;
+        }));
+
+        const geocoded = allPlaces.filter(p => p.lat != null).length;
+        console.log('[Chat] Geocoded ' + geocoded + '/' + allPlaces.length + ' places');
+      }
+    }
+
     // ── Send final structured data ──────────────────────────────────────
     res.write(`data: ${JSON.stringify({ type: 'done', response: cleanIntro, dayGroups, city: responseCity })}\n\n`);
     res.end();
@@ -625,7 +760,7 @@ RULES (apply to all responses):
   }
 });
 
-// Geocode endpoint with Postgres cache
+// Geocode endpoint with Postgres cache (checks cache FIRST to save API calls)
 app.post('/api/geocode', async (req, res) => {
   const { address, lat, lng, cityCenter } = req.body;
   const isReverse = typeof lat === 'number' && typeof lng === 'number' && !address;
@@ -639,32 +774,10 @@ app.post('/api/geocode', async (req, res) => {
     return res.status(500).json({ error: 'Server missing GOOGLE_MAPS_API_KEY' });
   }
 
-  // Validate cityCenter if provided
   const validCityCenter = cityCenter && typeof cityCenter.lat === 'number' && typeof cityCenter.lng === 'number'
     ? cityCenter : null;
 
-  const CACHE_TTL_DAYS = 365;
-
-  const normalizeKey = (text) => text.toLowerCase().trim().replace(/\s+/g, ' ');
   const normalizeReverseKey = (lt, ln) => `rev:${lt.toFixed(4)},${ln.toFixed(4)}`;
-
-  // Use Google Places API (Find Place) for all forward lookups
-  const findPlace = async (query, key, cityCenter) => {
-    let url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=geometry,formatted_address,name,place_id&key=${key}`;
-    if (cityCenter && cityCenter.lat && cityCenter.lng) {
-      url += `&locationbias=circle:50000@${cityCenter.lat},${cityCenter.lng}`;
-    }
-    const resp = await fetch(url);
-    const data = await resp.json();
-    if (data.status === 'OK' && data.candidates?.[0]) {
-      const c = data.candidates[0];
-      return {
-        lat: c.geometry.location.lat, lng: c.geometry.location.lng,
-        formatted_address: c.formatted_address || '', place_name: c.name || '', place_id: c.place_id || ''
-      };
-    }
-    return null;
-  };
 
   const geocodeReverse = async (lt, ln, key) => {
     const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lt},${ln}&key=${key}`;
@@ -678,72 +791,66 @@ app.post('/api/geocode', async (req, res) => {
     return null;
   };
 
+  // For forward lookups, use the shared cachedFindPlace helper
+  if (!isReverse) {
+    try {
+      let sql = null;
+      if (process.env.DATABASE_URL) {
+        sql = neon(process.env.DATABASE_URL);
+        await ensureGeoTable(sql);
+      }
+      const result = await cachedFindPlace(sql, address, mapsApiKey, validCityCenter);
+      if (!result) return res.status(404).json({ error: 'Geocoding returned no results' });
+      return res.json({ ...result, cached: false });
+    } catch (error) {
+      console.error('[Geocode] Error:', error);
+      const result = await findPlaceByName(address, mapsApiKey, validCityCenter);
+      if (!result) return res.status(404).json({ error: 'Geocoding returned no results' });
+      return res.json({ ...result, cached: false });
+    }
+  }
+
+  // Reverse geocoding with cache
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
-    console.warn('[Geocode] No DATABASE_URL — skipping cache');
-    const result = isReverse
-      ? await geocodeReverse(lat, lng, mapsApiKey)
-      : await findPlace(address, mapsApiKey, validCityCenter);
+    const result = await geocodeReverse(lat, lng, mapsApiKey);
     if (!result) return res.status(404).json({ error: 'Geocoding returned no results' });
     return res.json({ ...result, cached: false });
   }
 
   try {
     const sql = neon(databaseUrl);
-    await sql`
-      CREATE TABLE IF NOT EXISTS geocode_cache (
-        id SERIAL PRIMARY KEY,
-        query_key TEXT UNIQUE NOT NULL,
-        query_type TEXT NOT NULL DEFAULT 'forward',
-        lat DOUBLE PRECISION,
-        lng DOUBLE PRECISION,
-        formatted_address TEXT,
-        place_name TEXT,
-        created_at TIMESTAMP DEFAULT NOW()
-      )
-    `;
+    await ensureGeoTable(sql);
+    const revKey = normalizeReverseKey(lat, lng);
 
-    const lookupKey = isReverse ? normalizeReverseKey(lat, lng) : normalizeKey(address);
-
-    // Call Places API to find the exact place
-    const result = isReverse
-      ? await geocodeReverse(lat, lng, mapsApiKey)
-      : await findPlace(address, mapsApiKey, validCityCenter);
-    if (!result) return res.status(404).json({ error: 'Geocoding returned no results' });
-
-    const canonicalKey = normalizeKey(result.formatted_address);
-
-    // Check cache using formatted_address
     const cached = await sql`
       SELECT lat, lng, formatted_address, place_name
       FROM geocode_cache
-      WHERE query_key = ${canonicalKey}
+      WHERE query_key = ${revKey}
         AND created_at > NOW() - INTERVAL '365 days'
       LIMIT 1
     `;
-
     if (cached.length > 0) {
-      console.log(`[Geocode] Cache HIT: ${canonicalKey}`);
+      console.log('[Geocode] Cache HIT: ' + revKey);
       return res.json({ ...cached[0], cached: true });
     }
 
-    // Cache miss — store with formatted_address as key
-    console.log(`[Geocode] Cache MISS: ${canonicalKey}`);
+    const result = await geocodeReverse(lat, lng, mapsApiKey);
+    if (!result) return res.status(404).json({ error: 'Geocoding returned no results' });
+
+    console.log('[Geocode] Cache MISS → stored: ' + revKey);
     await sql`
       INSERT INTO geocode_cache (query_key, query_type, lat, lng, formatted_address, place_name)
-      VALUES (${canonicalKey}, ${isReverse ? 'reverse' : 'forward'}, ${result.lat}, ${result.lng}, ${result.formatted_address}, ${result.place_name})
+      VALUES (${revKey}, 'reverse', ${result.lat}, ${result.lng}, ${result.formatted_address}, ${result.place_name})
       ON CONFLICT (query_key) DO UPDATE SET
         lat = EXCLUDED.lat, lng = EXCLUDED.lng,
         formatted_address = EXCLUDED.formatted_address, place_name = EXCLUDED.place_name,
         created_at = NOW()
     `;
-
     return res.json({ ...result, cached: false });
   } catch (error) {
     console.error('[Geocode] Error:', error);
-    const result = isReverse
-      ? await geocodeReverse(lat, lng, mapsApiKey)
-      : await findPlace(address, mapsApiKey, validCityCenter);
+    const result = await geocodeReverse(lat, lng, mapsApiKey);
     if (!result) return res.status(404).json({ error: 'Geocoding returned no results' });
     return res.json({ ...result, cached: false });
   }

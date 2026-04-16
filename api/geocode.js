@@ -12,9 +12,11 @@ async function ensureTable(sql) {
       lng DOUBLE PRECISION,
       formatted_address TEXT,
       place_name TEXT,
+      place_id TEXT,
       created_at TIMESTAMP DEFAULT NOW()
     )
   `;
+  await sql`ALTER TABLE geocode_cache ADD COLUMN IF NOT EXISTS place_id TEXT`.catch(() => {});
 }
 
 function normalizeKey(text) {
@@ -111,7 +113,25 @@ export default async function handler(req, res) {
     const sql = neon(databaseUrl);
     await ensureTable(sql);
 
-    // Call Places API to find the exact place
+    // Check cache FIRST by query key to avoid unnecessary API calls
+    const lookupKey = isReverse
+      ? `rev:${lat.toFixed(4)},${lng.toFixed(4)}`
+      : normalizeKey(address);
+
+    const cached = await sql`
+      SELECT lat, lng, formatted_address, place_name, place_id
+      FROM geocode_cache
+      WHERE query_key = ${lookupKey}
+        AND created_at > NOW() - INTERVAL '365 days'
+      LIMIT 1
+    `;
+
+    if (cached.length > 0) {
+      console.log('[Geocode] Cache HIT: ' + lookupKey);
+      return res.json({ ...cached[0], cached: true });
+    }
+
+    // Cache miss — call API
     const result = isReverse
       ? await geocodeReverse(lat, lng, mapsApiKey)
       : await findPlace(address, mapsApiKey, validCityCenter);
@@ -120,33 +140,15 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Geocoding returned no results' });
     }
 
-    const canonicalKey = normalizeKey(result.formatted_address);
-
-    // Check cache using formatted_address
-    const cached = await sql`
-      SELECT lat, lng, formatted_address, place_name
-      FROM geocode_cache
-      WHERE query_key = ${canonicalKey}
-        AND created_at > NOW() - INTERVAL '365 days'
-      LIMIT 1
-    `;
-
-    if (cached.length > 0) {
-      console.log(`[Geocode] Cache HIT: ${canonicalKey}`);
-      return res.json({ ...cached[0], cached: true });
-    }
-
-    // Cache miss — store with formatted_address as key
-    console.log(`[Geocode] Cache MISS: ${canonicalKey}`);
+    // Store in cache
+    console.log('[Geocode] Cache MISS → stored: ' + lookupKey);
     await sql`
-      INSERT INTO geocode_cache (query_key, query_type, lat, lng, formatted_address, place_name)
-      VALUES (${canonicalKey}, ${isReverse ? 'reverse' : 'forward'}, ${result.lat}, ${result.lng}, ${result.formatted_address}, ${result.place_name})
+      INSERT INTO geocode_cache (query_key, query_type, lat, lng, formatted_address, place_name, place_id)
+      VALUES (${lookupKey}, ${isReverse ? 'reverse' : 'forward'}, ${result.lat}, ${result.lng}, ${result.formatted_address}, ${result.place_name}, ${result.place_id || null})
       ON CONFLICT (query_key) DO UPDATE SET
-        lat = EXCLUDED.lat,
-        lng = EXCLUDED.lng,
-        formatted_address = EXCLUDED.formatted_address,
-        place_name = EXCLUDED.place_name,
-        created_at = NOW()
+        lat = EXCLUDED.lat, lng = EXCLUDED.lng,
+        formatted_address = EXCLUDED.formatted_address, place_name = EXCLUDED.place_name,
+        place_id = EXCLUDED.place_id, created_at = NOW()
     `;
 
     return res.json({ ...result, cached: false });
