@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ChatMessage } from '../components/ChatInterface';
-import { sendChatMessage } from '../chatService';
+import { sendChatMessage, ChatError } from '../chatService';
 import { geocodeAddress } from '../services/geocodeService';
 import { TripRecommendation } from '../types';
 
@@ -40,13 +40,15 @@ const verifyPlace = async (
   return place;
 };
 
+type ErrorKind = 'api_key' | 'quota' | 'invalid_key' | 'generic';
+
 export const useChat = (
   currentCity: string,
   setCurrentCity: (city: string) => void,
   apiKey: string,
   savePlace: (place: TripRecommendation) => void,
   setFocusedPlace: (place: TripRecommendation | null) => void,
-  setErrorMessage: (msg: string) => void
+  setErrorMessage: (msg: string, kind?: ErrorKind) => void
 ): UseChatReturn => {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
@@ -63,7 +65,8 @@ export const useChat = (
   const handleSendMessage = async (message: string) => {
     if (!apiKey) {
       setErrorMessage(
-        'Please provide your Gemini API key. Get one free at https://aistudio.google.com/apikey'
+        'Please provide your Gemini API key. Get one free at https://aistudio.google.com/apikey',
+        'api_key'
       );
       return;
     }
@@ -110,8 +113,15 @@ export const useChat = (
       setChatLoading(false);
     } catch (error: any) {
       console.error('Chat error:', error);
-      if (error.message?.includes('API key')) {
-        setErrorMessage(error.message);
+      // Surface user-actionable errors from the server. Stay silent on unknown
+      // 500s — they're noise for users.
+      const code = error instanceof ChatError ? error.errorCode : undefined;
+      if (code === 'quota_exceeded') {
+        setErrorMessage(error.message, 'quota');
+      } else if (code === 'invalid_api_key') {
+        setErrorMessage(error.message, 'invalid_key');
+      } else if (error.message?.includes('API key')) {
+        setErrorMessage(error.message, 'api_key');
       }
       setChatMessages((prev) => prev.filter((msg) => msg.id !== aiMessageId));
       setChatLoading(false);

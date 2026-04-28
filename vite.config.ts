@@ -1,16 +1,10 @@
 
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-export default defineConfig(({ mode }) => {
-  // Load env file from directory where command is executed.
-  const env = loadEnv(mode, (process as any).cwd(), '');
-  return {
-    plugins: [react()],
-    define: {
-      // Shims process.env for browser compatibility
-      'process.env.API_KEY': JSON.stringify(env.API_KEY),
-      'process.env.GOOGLE_MAPS_API_KEY': JSON.stringify(env.GOOGLE_MAPS_API_KEY),
-    },
-  };
+// Frontend env vars use the VITE_ prefix and are read via import.meta.env
+// (see MapView.tsx, googleAuthService.ts). Backend-only secrets like
+// GOOGLE_MAPS_API_KEY and DATABASE_URL must NOT be bundled.
+export default defineConfig({
+  plugins: [react()],
 });

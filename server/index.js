@@ -6,6 +6,8 @@ import { neon } from '@neondatabase/serverless';
 
 dotenv.config();
 
+import { expressCorsOptions, checkRateLimit, getClientIp, LIMITS, ALLOWED_ORIGINS, safeError, truncate, CHAT_LIMITS } from '../api/_security.js';
+
 // Words that should never be treated as city names
 const STOP_WORDS = new Set(['me','my','a','the','an','it','we','us','i','all','some','this','that','our','your','there','here','them','day','days','trip','plan','visit','see','want','need','like','show','find','get','know','make','take','give']);
 
@@ -144,10 +146,33 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
-app.use(cors());
-app.use(express.json());
+app.set('trust proxy', true);
+app.use(cors(expressCorsOptions));
+app.use(express.json({ limit: '100kb' }));
+// Convert CORS rejections into a clean 403 instead of Express's default 500.
+app.use((err, req, res, next) => {
+  if (err && err.message === 'Not allowed by CORS') {
+    return res.status(403).json({ error: 'Origin not allowed' });
+  }
+  next(err);
+});
 
-// Rate limiting disabled
+// Per-IP, per-endpoint rate limiting (in-memory sliding window).
+function rateLimit(endpoint) {
+  const cfg = LIMITS[endpoint];
+  return (req, res, next) => {
+    const ip = getClientIp(req);
+    const { allowed, retryAfter } = checkRateLimit(`${ip}:${endpoint}`, cfg.max, cfg.windowMs);
+    if (!allowed) {
+      res.setHeader('Retry-After', String(retryAfter));
+      return res.status(429).json({
+        error: 'Too many requests',
+        message: `Rate limit exceeded. Try again in ${retryAfter}s.`,
+      });
+    }
+    next();
+  };
+}
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -155,7 +180,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Quick search endpoint - just get place names
-app.post('/api/search', async (req, res) => {
+app.post('/api/search', rateLimit('search'), async (req, res) => {
   try {
     const { city, query, apiKey, isAdditional = false, excludeTitles = [] } = req.body;
 
@@ -166,18 +191,15 @@ app.post('/api/search', async (req, res) => {
       });
     }
 
-    // Check for API key from user or fallback to environment variable
-    const geminiApiKey = apiKey || process.env.GEMINI_API_KEY;
-    
-    if (!geminiApiKey) {
-      console.error('No API key provided');
+    if (!apiKey) {
       return res.status(400).json({
         error: 'API key required',
         message: 'Please provide your Gemini API key. Get one free at https://aistudio.google.com/apikey'
       });
     }
+    const geminiApiKey = apiKey;
 
-    console.log(`[Quick Search] ${city} - "${query}"${apiKey ? ' (user key)' : ' (env key)'}`);
+    console.log(`[Quick Search] ${truncate(city, 40)} - "${truncate(query)}"`);
 
     // Initialize Gemini AI with provided key
     const ai = new GoogleGenAI({ apiKey: geminiApiKey });
@@ -271,7 +293,7 @@ app.post('/api/search', async (req, res) => {
                      isCategorySearch ? 'Category' :
                      isGeneralExploration ? 'Exploration' : 'Custom';
     
-    console.log(`[Quick Search] City: ${city}, Query: "${query}", Type: ${queryType}, Additional: ${isAdditional}, Count: ${placeCount}`);
+    console.log(`[Quick Search] City: ${truncate(city, 40)}, Query: "${truncate(query)}", Type: ${queryType}, Additional: ${isAdditional}, Count: ${placeCount}`);
     
     // Stronger prompt with numbered format and descriptions
     const categoryBreakdown = isTripPlanning && !isAdditional
@@ -354,16 +376,12 @@ IMPORTANT: Complete the FULL list of ${placeCount} items. Count to ${placeCount}
     });
 
   } catch (error) {
-    console.error('Gemini API Error:', error);
-    res.status(500).json({
-      error: 'Search failed',
-      message: error.message || 'An error occurred while processing your request'
-    });
+    safeError(res, error, 'Search');
   }
 });
 
 // PHASE 2: Enrich selected places with full details (coordinates, ratings, descriptions)
-app.post('/api/enrich', async (req, res) => {
+app.post('/api/enrich', rateLimit('enrich'), async (req, res) => {
   try {
     const { places, city, apiKey, latLng } = req.body;
 
@@ -375,18 +393,15 @@ app.post('/api/enrich', async (req, res) => {
       });
     }
 
-    // Check for API key from user or fallback to environment variable
-    const geminiApiKey = apiKey || process.env.GEMINI_API_KEY;
-    
-    if (!geminiApiKey) {
-      console.error('No API key provided');
+    if (!apiKey) {
       return res.status(400).json({
         error: 'API key required',
         message: 'Please provide your Gemini API key. Get one free at https://aistudio.google.com/apikey'
       });
     }
+    const geminiApiKey = apiKey;
 
-    console.log(`[Enrichment] Processing ${places.length} places for ${city}${apiKey ? ' (user key)' : ' (env key)'}`);
+    console.log(`[Enrichment] Processing ${places.length} places for ${city}`);
 
     // Initialize Gemini AI with provided key
     const ai = new GoogleGenAI({ apiKey: geminiApiKey });
@@ -515,33 +530,35 @@ Example:
     });
 
   } catch (error) {
-    console.error('Enrichment API Error:', error);
-    res.status(500).json({
-      error: 'Enrichment failed',
-      message: error.message || 'An error occurred while enriching places'
-    });
+    safeError(res, error, 'Enrichment');
   }
 });
 
 // Chat endpoint - streaming AI travel agent
-app.post('/api/chat', async (req, res) => {
+app.post('/api/chat', rateLimit('chat'), async (req, res) => {
   try {
     const { city, message, apiKey, conversationHistory = [] } = req.body;
 
-    if (!message) {
+    if (!message || typeof message !== 'string') {
       return res.status(400).json({
         error: 'Missing required fields',
         message: 'Message is required'
       });
     }
+    if (message.length > CHAT_LIMITS.maxMessageChars) {
+      return res.status(413).json({
+        error: 'Message too long',
+        message: `Please keep messages under ${CHAT_LIMITS.maxMessageChars} characters.`
+      });
+    }
 
-    const geminiApiKey = apiKey || process.env.GEMINI_API_KEY;
-    if (!geminiApiKey) {
+    if (!apiKey) {
       return res.status(400).json({
         error: 'API key required',
         message: 'Please provide your Gemini API key. Get one free at https://aistudio.google.com/apikey'
       });
     }
+    const geminiApiKey = apiKey;
 
     // ── City Resolution ─────────────────────────────────────────────────
     const cityFromMessage = extractCityFromMessage(message);
@@ -549,7 +566,7 @@ app.post('/api/chat', async (req, res) => {
 
     const isHebrew = /[\u0590-\u05FF]/.test(message);
 
-    console.log(`[Chat] ${resolvedCity || 'Unknown'} - "${message}" (stream)`);
+    console.log(`[Chat] ${resolvedCity || 'Unknown'} - "${truncate(message)}" (stream)`);
 
     // ── SSE Headers ─────────────────────────────────────────────────────
     res.setHeader('Content-Type', 'text/event-stream');
@@ -616,12 +633,15 @@ RULES (apply to all responses):
 - Always use the FULL official name for accurate map lookup (e.g. "Burj Khalifa" not "The Tower", "Louvre Museum" not "The Louvre")
 - Never ignore qualifiers the user stated (price, dietary need, vibe, distance, etc.)${isHebrew ? '\n- Reply entirely in Hebrew but keep [PLACE:] and [DAY:] tags in English so the app can parse them.' : ''}`;
 
-    // ── Build multi-turn Content[] (last 10 messages for cost control) ──
-    const recentHistory = conversationHistory.slice(-10);
-    const contents = recentHistory.map(msg => ({
-      role: msg.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: msg.content }]
-    }));
+    // ── Build multi-turn Content[] (cap count + per-message length for cost & abuse) ──
+    const safeHistory = (Array.isArray(conversationHistory) ? conversationHistory : [])
+      .slice(-CHAT_LIMITS.maxHistoryMessages)
+      .filter(m => m && typeof m.content === 'string')
+      .map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content.slice(0, CHAT_LIMITS.maxHistoryCharsPerMsg) }]
+      }));
+    const contents = safeHistory;
     // Detect "X days trip to Y" pattern and add planning instructions
     const tripMatch = message.match(/(\d+)\s*days?\s+(?:trip|itinerary|visit|vacation|holiday)\s+(?:to|in)\s+/i);
     let userText = resolvedCity ? `[City: ${resolvedCity}] ${message}` : message;
@@ -770,18 +790,12 @@ RULES (apply to all responses):
     res.end();
 
   } catch (error) {
-    console.error('Gemini Chat Error:', error);
-    if (res.headersSent) {
-      res.write(`data: ${JSON.stringify({ type: 'error', message: error.message || 'Chat failed' })}\n\n`);
-      res.end();
-    } else {
-      res.status(500).json({ error: 'Chat failed', message: error.message || 'An error occurred' });
-    }
+    safeError(res, error, 'Chat');
   }
 });
 
 // Geocode endpoint with Postgres cache (checks cache FIRST to save API calls)
-app.post('/api/geocode', async (req, res) => {
+app.post('/api/geocode', rateLimit('geocode'), async (req, res) => {
   // `address` is the place name (e.g. "Atlantis The Palm"). `city` (optional)
   // joins it for the Places query and is part of the cache key so two places
   // with the same name in different cities don't collide.
@@ -884,7 +898,8 @@ app.post('/api/geocode', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Backend API server running on http://localhost:${PORT}`);
   console.log(`📍 Gemini API endpoint: http://localhost:${PORT}/api/search`);
-  console.log(`⏱️  Rate limiting: disabled`);
+  console.log(`🔒 Allowed origins: ${ALLOWED_ORIGINS.join(', ')}`);
+  console.log(`⏱️  Rate limits/min per IP: search=${LIMITS.search.max} enrich=${LIMITS.enrich.max} chat=${LIMITS.chat.max} geocode=${LIMITS.geocode.max}`);
 });
 
 export default app;

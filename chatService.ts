@@ -10,6 +10,19 @@ interface ChatResponse {
   city: string;
 }
 
+// Custom error so the UI can branch on errorCode (e.g. show a quota-exceeded
+// banner) without parsing the message string.
+export class ChatError extends Error {
+  errorCode?: string;
+  retryAfter?: number | null;
+  constructor(message: string, errorCode?: string, retryAfter?: number | null) {
+    super(message);
+    this.name = 'ChatError';
+    this.errorCode = errorCode;
+    this.retryAfter = retryAfter ?? null;
+  }
+}
+
 // Send a chat message and stream the response via SSE.
 // `onChunk` fires for each text token from Gemini.
 export const sendChatMessage = async (
@@ -36,7 +49,11 @@ export const sendChatMessage = async (
   if (!response.ok) {
     // Non-streaming error (headers not yet switched to SSE)
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+    throw new ChatError(
+      errorData.message || `HTTP error! status: ${response.status}`,
+      errorData.errorCode,
+      errorData.retryAfter,
+    );
   }
 
   const reader = response.body!.getReader();
@@ -67,7 +84,7 @@ export const sendChatMessage = async (
             city: data.city || city
           };
         } else if (data.type === 'error') {
-          throw new Error(data.message);
+          throw new ChatError(data.message, data.errorCode, data.retryAfter);
         }
       } catch (e) {
         if (e instanceof SyntaxError) continue; // skip malformed JSON chunk

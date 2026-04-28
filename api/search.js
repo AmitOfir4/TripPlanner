@@ -1,21 +1,15 @@
 // Vercel Serverless Function - Quick Search (Phase 1)
 import { GoogleGenAI } from '@google/genai';
+import { applyCors, enforceRateLimit, safeError, truncate } from './_security.js';
 
 export default async function handler(req, res) {
-  // Enable CORS
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
-
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
+  if (applyCors(req, res)) return;
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  if (enforceRateLimit(req, res, 'search')) return;
 
   try {
     const { city, query, apiKey } = req.body;
@@ -28,18 +22,15 @@ export default async function handler(req, res) {
       });
     }
 
-    // Check for API key from user or fallback to environment variable
-    const geminiApiKey = apiKey || process.env.GEMINI_API_KEY;
-    
-    if (!geminiApiKey) {
-      console.error('No API key provided');
+    if (!apiKey) {
       return res.status(400).json({
         error: 'API key required',
         message: 'Please provide your Gemini API key. Get one free at https://aistudio.google.com/apikey'
       });
     }
+    const geminiApiKey = apiKey;
 
-    console.log(`[Quick Search] ${city} - "${query}"${apiKey ? ' (user key)' : ' (env key)'}`);
+    console.log(`[Quick Search] ${truncate(city, 40)} - "${truncate(query)}"`);
 
     // Initialize Gemini AI with provided key
     const ai = new GoogleGenAI({ apiKey: geminiApiKey });
@@ -109,10 +100,6 @@ The Dubai Mall | Shopping`;
     });
 
   } catch (error) {
-    console.error('Gemini API Error:', error);
-    res.status(500).json({
-      error: 'Search failed',
-      message: error.message || 'An error occurred while processing your request'
-    });
+    safeError(res, error, 'Search');
   }
 }

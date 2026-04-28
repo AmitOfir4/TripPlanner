@@ -244,10 +244,11 @@ function parseKMLPlacemark(placemark: KmlPlacemark, resolveStyle: StyleResolver)
 }
 
 /**
- * Removes HTML tags from KML description (My Maps often includes HTML)
+ * Removes HTML tags from KML description (My Maps often includes HTML).
+ * Uses DOMParser instead of innerHTML so resource-loading attributes
+ * (e.g. <img src=x onerror=…>) cannot fire on untrusted input.
  */
 function stripHTML(html: string): string {
-  const tmp = document.createElement('div');
-  tmp.innerHTML = html;
-  return tmp.textContent || tmp.innerText || '';
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  return doc.body.textContent || '';
 }

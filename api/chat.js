@@ -1,5 +1,6 @@
 // Vercel Serverless Function - Streaming AI Chat Travel Agent
 import { GoogleGenAI } from '@google/genai';
+import { applyCors, enforceRateLimit, safeError, truncate, CHAT_LIMITS } from './_security.js';
 
 // Grammatical function words — structural words that can never be part of a real city name.
 // Checked against every word in the candidate (not just the first).
@@ -64,38 +65,37 @@ function extractCityFromMessage(message) {
 }
 
 export default async function handler(req, res) {
-  // Enable CORS
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
-
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
+  if (applyCors(req, res)) return;
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  if (enforceRateLimit(req, res, 'chat')) return;
+
   try {
     const { city, message, apiKey, conversationHistory = [] } = req.body;
 
-    if (!message) {
+    if (!message || typeof message !== 'string') {
       return res.status(400).json({
         error: 'Missing required fields',
         message: 'Message is required'
       });
     }
+    if (message.length > CHAT_LIMITS.maxMessageChars) {
+      return res.status(413).json({
+        error: 'Message too long',
+        message: `Please keep messages under ${CHAT_LIMITS.maxMessageChars} characters.`
+      });
+    }
 
-    const geminiApiKey = apiKey || process.env.GEMINI_API_KEY;
-    if (!geminiApiKey) {
+    if (!apiKey) {
       return res.status(400).json({
         error: 'API key required',
         message: 'Please provide your Gemini API key. Get one free at https://aistudio.google.com/apikey'
       });
     }
+    const geminiApiKey = apiKey;
 
     // ── City Resolution ─────────────────────────────────────────────────
     const cityFromMessage = extractCityFromMessage(message);
@@ -103,7 +103,7 @@ export default async function handler(req, res) {
 
     const isHebrew = /[\u0590-\u05FF]/.test(message);
 
-    console.log(`[Chat] ${resolvedCity || 'Unknown'} - "${message}" (stream)`);
+    console.log(`[Chat] ${resolvedCity || 'Unknown'} - "${truncate(message)}" (stream)`);
 
     // ── SSE Headers ─────────────────────────────────────────────────────
     res.setHeader('Content-Type', 'text/event-stream');
@@ -170,12 +170,15 @@ RULES (apply to all responses):
 - Always use the FULL official name for accurate map lookup (e.g. "Burj Khalifa" not "The Tower", "Louvre Museum" not "The Louvre")
 - Never ignore qualifiers the user stated (price, dietary need, vibe, distance, etc.)${isHebrew ? '\n- Reply entirely in Hebrew but keep [PLACE:] and [DAY:] tags in English so the app can parse them.' : ''}`;
 
-    // ── Build multi-turn Content[] (last 10 messages for cost control) ──
-    const recentHistory = conversationHistory.slice(-10);
-    const contents = recentHistory.map(msg => ({
-      role: msg.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: msg.content }]
-    }));
+    // ── Build multi-turn Content[] (cap count + per-message length for cost & abuse) ──
+    const safeHistory = (Array.isArray(conversationHistory) ? conversationHistory : [])
+      .slice(-CHAT_LIMITS.maxHistoryMessages)
+      .filter(m => m && typeof m.content === 'string')
+      .map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content.slice(0, CHAT_LIMITS.maxHistoryCharsPerMsg) }]
+      }));
+    const contents = safeHistory;
     // Detect "X days trip to Y" pattern and add planning instructions
     const tripMatch = message.match(/(\d+)\s*days?\s+(?:trip|itinerary|visit|vacation|holiday)\s+(?:to|in)\s+/i);
     let userText = resolvedCity ? `[City: ${resolvedCity}] ${message}` : message;
@@ -322,12 +325,6 @@ RULES (apply to all responses):
     res.end();
 
   } catch (error) {
-    console.error('Gemini Chat Error:', error);
-    if (res.headersSent) {
-      res.write(`data: ${JSON.stringify({ type: 'error', message: error.message || 'Chat failed' })}\n\n`);
-      res.end();
-    } else {
-      res.status(500).json({ error: 'Chat failed', message: error.message || 'An error occurred' });
-    }
+    safeError(res, error, 'Chat');
   }
 }

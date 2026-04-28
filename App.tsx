@@ -21,7 +21,13 @@ const App: React.FC = () => {
   const { googleUser, login, logout } = useGoogleAuth();
   const { apiKey, setApiKey, clearApiKey, hasApiKey } = useApiKey();
   const [focusedPlace, setFocusedPlace] = useState<TripRecommendation | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string>('');
+  type ErrorKind = 'api_key' | 'quota' | 'invalid_key' | 'generic';
+  const [errorMessage, setErrorMessageRaw] = useState<string>('');
+  const [errorKind, setErrorKind] = useState<ErrorKind>('api_key');
+  const setErrorMessage = (msg: string, kind: ErrorKind = 'api_key') => {
+    setErrorMessageRaw(msg);
+    if (msg) setErrorKind(kind);
+  };
   const [language, setLanguage] = useState<'en' | 'he'>('en');
   const mapContainerRef = useRef<HTMLDivElement>(null);
 
@@ -152,27 +158,37 @@ const App: React.FC = () => {
         <div className={s.scrollArea}>
           <div className={s.contentWrap}>
             {/* Error Banner */}
-            {errorMessage && (
-              <div className={s.errorBanner}>
-                <div className={s.errorInner}>
-                  <div className={s.errorIconWrap}>🔑</div>
-                  <div className="flex-1">
-                    <h3 className={s.errorTitle}>API Key Required</h3>
-                    <p className={s.errorText}>{errorMessage}</p>
-                    <button
-                      onClick={() => {
-                        setErrorMessage('');
-                        document.querySelector('[title="Add your Gemini API Key"]')?.dispatchEvent(new Event('click', { bubbles: true }));
-                      }}
-                      className={s.errorBtn}
-                    >
-                      Add API Key
-                    </button>
+            {errorMessage && (() => {
+              const banner = {
+                api_key:     { icon: '🔑', title: 'API Key Required',   cta: 'Add API Key' },
+                invalid_key: { icon: '❌', title: 'Invalid API Key',     cta: 'Update Key' },
+                quota:       { icon: '⏱️', title: 'Daily Limit Reached', cta: null as string | null },
+                generic:     { icon: '⚠️', title: 'Something went wrong', cta: null as string | null },
+              }[errorKind];
+              return (
+                <div className={s.errorBanner}>
+                  <div className={s.errorInner}>
+                    <div className={s.errorIconWrap}>{banner.icon}</div>
+                    <div className="flex-1">
+                      <h3 className={s.errorTitle}>{banner.title}</h3>
+                      <p className={s.errorText}>{errorMessage}</p>
+                      {banner.cta && (
+                        <button
+                          onClick={() => {
+                            setErrorMessage('');
+                            document.querySelector('[title="Add your Gemini API Key"]')?.dispatchEvent(new Event('click', { bubbles: true }));
+                          }}
+                          className={s.errorBtn}
+                        >
+                          {banner.cta}
+                        </button>
+                      )}
+                    </div>
+                    <button onClick={() => setErrorMessage('')} className={s.errorClose}>×</button>
                   </div>
-                  <button onClick={() => setErrorMessage('')} className={s.errorClose}>×</button>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Chat & Map Layout */}
             <div ref={mapContainerRef} className={s.chatMapLayout}>
