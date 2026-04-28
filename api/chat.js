@@ -123,6 +123,9 @@ Every time you mention a specific place (restaurant, cafe, attraction, hotel, sh
 The lat,lng field is REQUIRED — always include the real GPS coordinates so the place can be pinned on a map. Use decimal degrees (e.g. 25.2048,55.2708). Never omit coordinates.
 Never write a place name without the [PLACE:] tag — the app uses these tags to let users save places to their map.
 
+CITY TAG (REQUIRED when the response is about a single city):
+At the very start of your response, output one [CITY_EN: City Name In English] tag using the official English name. Examples: [CITY_EN: Dubai], [CITY_EN: Paris], [CITY_EN: Tokyo], [CITY_EN: New York City]. Do this even when the user asked in another language (Hebrew, Spanish, etc.). The tag is critical — it lets the app cache lookups consistently across languages. Omit only for multi-city or non-city responses.
+
 Categories: Landmark, Restaurant, Shopping, Hotel, Nature, Entertainment, Museum, Beach, Nightlife, Adventure, Culture, Cafe, Ice Cream, Dessert
 
 EXAMPLES:
@@ -205,6 +208,13 @@ RULES (apply to all responses):
     // 4th capture group (lat,lng) is optional — gracefully handles responses without coords
     const placeRegex = /\[PLACE:\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|\]]+?)\s*(?:\|\s*([-\d.]+\s*,\s*[-\d.]+))?\s*\]/g;
 
+    // [CITY_EN:] is Gemini's authoritative English city name — used as the
+    // canonical city for every place in this response so cache keys are
+    // language-agnostic (Hebrew/Arabic queries hit the same row as English).
+    const cityEnMatch = fullText.match(/\[CITY_EN:\s*([^\]]+)\]/);
+    const englishCity = cityEnMatch ? cityEnMatch[1].trim() : null;
+    const cityForPlaces = englishCity || resolvedCity || undefined;
+
     const parseCoords = (raw) => {
       if (!raw) return null;
       const [latStr, lngStr] = raw.split(',');
@@ -236,7 +246,7 @@ RULES (apply to all responses):
             title: placeMatch[1].trim(),
             category: placeMatch[2].trim(),
             description: placeMatch[3].trim(),
-            city: resolvedCity || undefined,
+            city: cityForPlaces,
             _geminiLat: geminiCoords?.lat,
             _geminiLng: geminiCoords?.lng,
           });
@@ -267,12 +277,10 @@ RULES (apply to all responses):
     // Server makes ZERO Places API calls per chat message — the user pays for
     // accuracy only when they actually add a place to their map (verified
     // client-side via /api/geocode in services/geocodeService.ts).
-    // Coords here are flagged 'approximate' so the UI knows they're unverified.
     for (const place of dayGroups.flatMap(g => g.places)) {
       if (place._geminiLat != null && place._geminiLng != null) {
         place.lat = place._geminiLat;
         place.lng = place._geminiLng;
-        place.quality = 'approximate';
       }
       delete place._geminiLat;
       delete place._geminiLng;
@@ -280,15 +288,18 @@ RULES (apply to all responses):
 
     const firstDayIndex = dayMatches.length > 0 ? dayMatches[0].index : fullText.length;
     const cleanIntro = fullText.substring(0, firstDayIndex).trim()
+      .replace(/\[CITY_EN:[^\]]*\]/g, '')
       .replace(/\[PLACE:\s*([^|]+)\s*\|[^\]]*\]/g, (_, name) => name.trim())
       .replace(/\[DAY:[^\]]*\]/g, '')
       .replace(/\*/g, '')
       .trim();
 
     const totalPlaces = dayGroups.reduce((sum, day) => sum + day.places.length, 0);
-    console.log(`[Chat] Extracted ${totalPlaces} places across ${dayGroups.length} group(s)`);
+    console.log(`[Chat] Extracted ${totalPlaces} places across ${dayGroups.length} group(s)` + (englishCity ? ` (city=${englishCity})` : ''));
 
-    let responseCity = resolvedCity || city;
+    // Prefer Gemini's [CITY_EN:] tag — it's reliable across input languages
+    // where our regex-based extraction often fails (e.g. Hebrew without ב prefix).
+    let responseCity = englishCity || resolvedCity || city;
     if (!responseCity && totalPlaces > 0) {
       const cityMatch2 = fullText.match(/\b(?:in|to|visiting)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/);
       responseCity = cityMatch2 ? cityMatch2[1] : '';

@@ -23,8 +23,13 @@ function normalizeKey(text) {
   return text.toLowerCase().trim().replace(/\s+/g, ' ');
 }
 
-function clnormalizeReverseKey(lat, lng) {
-  return `rev:${lat.toFixed(4)},${lng.toFixed(4)}`;
+/** Cache key shape: `placeName, city` (lowercased) or just `placeName`.
+ *  Matches the legacy `normalizeKey("placeName, city")` output for English
+ *  inputs, so prior cache rows keep hitting.
+ */
+function buildPlaceCacheKey(placeName, city) {
+  const np = normalizeKey(placeName);
+  return city ? `${np}, ${normalizeKey(city)}` : np;
 }
 
 // Use Google Places API (Find Place) for all forward lookups — accurate for POIs, addresses, and cities
@@ -80,7 +85,10 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { address, lat, lng, cityCenter } = req.body;
+  // `address` is the place name. `city` (optional) is canonicalised separately
+  // so the cache key is language-agnostic — Hebrew/Arabic city names land on
+  // the same row as the English equivalent.
+  const { address, city, lat, lng, cityCenter } = req.body;
   const isReverse = typeof lat === 'number' && typeof lng === 'number' && !address;
 
   if (!address && !isReverse) {
@@ -96,12 +104,15 @@ export default async function handler(req, res) {
   const validCityCenter = cityCenter && typeof cityCenter.lat === 'number' && typeof cityCenter.lng === 'number'
     ? cityCenter : null;
 
+  // The query string actually sent to Places (with city joined for accuracy).
+  const apiQuery = !isReverse && city ? `${address}, ${city}` : address;
+
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     console.warn('[Geocode] No DATABASE_URL — skipping cache');
     const result = isReverse
       ? await geocodeReverse(lat, lng, mapsApiKey)
-      : await findPlace(address, mapsApiKey, validCityCenter);
+      : await findPlace(apiQuery, mapsApiKey, validCityCenter);
 
     if (!result) {
       return res.status(404).json({ error: 'Geocoding returned no results' });
@@ -113,10 +124,10 @@ export default async function handler(req, res) {
     const sql = neon(databaseUrl);
     await ensureTable(sql);
 
-    // Check cache FIRST by query key to avoid unnecessary API calls
+    // Cache key — `placeName, city` for forward, lat/lng-bucketed for reverse.
     const lookupKey = isReverse
       ? `rev:${lat.toFixed(4)},${lng.toFixed(4)}`
-      : normalizeKey(address);
+      : buildPlaceCacheKey(address, city);
 
     const cached = await sql`
       SELECT lat, lng, formatted_address, place_name, place_id
@@ -134,7 +145,7 @@ export default async function handler(req, res) {
     // Cache miss — call API
     const result = isReverse
       ? await geocodeReverse(lat, lng, mapsApiKey)
-      : await findPlace(address, mapsApiKey, validCityCenter);
+      : await findPlace(apiQuery, mapsApiKey, validCityCenter);
 
     if (!result) {
       return res.status(404).json({ error: 'Geocoding returned no results' });
@@ -156,7 +167,7 @@ export default async function handler(req, res) {
     console.error('[Geocode] Error:', error);
     const result = isReverse
       ? await geocodeReverse(lat, lng, mapsApiKey)
-      : await findPlace(address, mapsApiKey, validCityCenter);
+      : await findPlace(apiQuery, mapsApiKey, validCityCenter);
 
     if (!result) {
       return res.status(404).json({ error: 'Geocoding returned no results' });

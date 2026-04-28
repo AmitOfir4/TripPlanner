@@ -8,19 +8,27 @@ const memoryCache = new Map<string, { lat: number; lng: number; formatted_addres
 // In-flight request deduplication — concurrent calls for the same key share one fetch
 const inFlight = new Map<string, Promise<any>>();
 
-function forwardKey(address: string): string {
-  return `fwd:${address.toLowerCase().trim()}`;
+function forwardKey(address: string, city?: string): string {
+  return city
+    ? `fwd:${address.toLowerCase().trim()}|${city.toLowerCase().trim()}`
+    : `fwd:${address.toLowerCase().trim()}`;
 }
 
 function reverseKey(lat: number, lng: number): string {
   return `rev:${lat.toFixed(4)},${lng.toFixed(4)}`;
 }
 
+/**
+ * Forward-geocode a place. `city` (optional) is sent separately so the server
+ * can canonicalise it to English in the cache key — Hebrew "דובאי" and
+ * English "Dubai" then hit the same row.
+ */
 export async function geocodeAddress(
   address: string,
+  city?: string,
   cityCenter?: { lat: number; lng: number }
 ): Promise<{ lat: number; lng: number; formatted_address: string } | null> {
-  const key = forwardKey(address);
+  const key = forwardKey(address, city);
   const hit = memoryCache.get(key);
   if (hit) return hit;
 
@@ -32,7 +40,7 @@ export async function geocodeAddress(
       const res = await fetch(GEOCODE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, cityCenter })
+        body: JSON.stringify({ address, city, cityCenter })
       });
 
       if (!res.ok) return null;

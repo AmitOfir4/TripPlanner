@@ -17,20 +17,21 @@ interface UseChatReturn {
 }
 
 // Resolve a place to its precise Google Places coordinates before saving.
-// Returns the place with verified coords + quality:'verified' on success,
-// or the original place with quality:'approximate' if Places couldn't find it
-// (the user still gets the pin, just flagged as unverified).
+// On success: returns the place with verified coords. If Places can't find it,
+// returns the place unchanged so the user still gets the (Gemini-approximate) pin.
+//
+// `city` is sent separately to the geocode endpoint so it can be canonicalised
+// to English for the cache key — Hebrew "דובאי" hits the same row as "Dubai".
 const verifyPlace = async (
   place: TripRecommendation,
   cityHint: string
 ): Promise<TripRecommendation> => {
-  const cityForQuery = place.city || cityHint;
-  const query = cityForQuery ? `${place.title}, ${cityForQuery}` : place.title;
-  const result = await geocodeAddress(query);
+  const cityForQuery = place.city || cityHint || undefined;
+  const result = await geocodeAddress(place.title, cityForQuery);
   if (result) {
-    return { ...place, lat: result.lat, lng: result.lng, quality: 'verified' };
+    return { ...place, lat: result.lat, lng: result.lng };
   }
-  return { ...place, quality: 'approximate' };
+  return place;
 };
 
 export const useChat = (
@@ -79,7 +80,7 @@ export const useChat = (
     setChatLoading(true);
 
     try {
-      const { response, dayGroups, places, city } = await sendChatMessage(
+      const { response, dayGroups, city } = await sendChatMessage(
         currentCity || '',
         message,
         apiKey,
@@ -93,16 +94,11 @@ export const useChat = (
         }
       );
 
-      if (city && !currentCity) {
-        setCurrentCity(city);
-      } else if (!currentCity) {
-        const placeCity = places?.find((p) => p.city)?.city;
-        if (placeCity) setCurrentCity(placeCity);
-      }
+      if (city && !currentCity) setCurrentCity(city);
 
       setChatMessages((prev) =>
         prev.map((msg) =>
-          msg.id === aiMessageId ? { ...msg, content: response, dayGroups, places } : msg
+          msg.id === aiMessageId ? { ...msg, content: response, dayGroups } : msg
         )
       );
       setChatLoading(false);

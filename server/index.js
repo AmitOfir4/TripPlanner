@@ -55,6 +55,17 @@ function normalizeKey(text) {
   return text.toLowerCase().trim().replace(/\s+/g, ' ');
 }
 
+/**
+ * Cache key shape for a place lookup. `${placeName}, ${city}` lowercased,
+ * matching what `normalizeKey("placeName, city")` would produce.
+ * Chat keeps cities in English via the [CITY_EN:] tag, so cross-language
+ * lookups already converge on the same key.
+ */
+function buildPlaceCacheKey(placeName, city) {
+  const np = normalizeKey(placeName);
+  return city ? `${np}, ${normalizeKey(city)}` : np;
+}
+
 async function ensureGeoTable(sql) {
   await sql`
     CREATE TABLE IF NOT EXISTS geocode_cache (
@@ -72,9 +83,22 @@ async function ensureGeoTable(sql) {
   await sql`ALTER TABLE geocode_cache ADD COLUMN IF NOT EXISTS place_id TEXT`.catch(() => {});
 }
 
-async function cachedFindPlace(sql, query, apiKey, cityCenter) {
-  if (!sql) return findPlaceByName(query, apiKey, cityCenter);
-  const key = normalizeKey(query);
+/**
+ * Forward-geocode with cache.
+ *
+ * `placeName` is the place itself (e.g. "Atlantis The Palm").
+ * `city` (optional) is a city hint used both for the API location bias query
+ *   and for the cache key, where it's canonicalised to English so lookups in
+ *   any language land on the same row.
+ *
+ * Falls back to the legacy single-string contract when called as
+ * `cachedFindPlace(sql, fullQuery, apiKey, cityCenter)` — the second arg is
+ * then treated as the full address with no separate city.
+ */
+async function cachedFindPlace(sql, placeName, apiKey, cityCenter, city) {
+  const apiQuery = city ? `${placeName}, ${city}` : placeName;
+  if (!sql) return findPlaceByName(apiQuery, apiKey, cityCenter);
+  const key = buildPlaceCacheKey(placeName, city);
   try {
     const cached = await sql`
       SELECT lat, lng, formatted_address, place_name, place_id
@@ -87,7 +111,7 @@ async function cachedFindPlace(sql, query, apiKey, cityCenter) {
       console.log('[Chat/Geocode] Cache HIT: ' + key);
       return { lat: cached[0].lat, lng: cached[0].lng, formatted_address: cached[0].formatted_address, place_name: cached[0].place_name, place_id: cached[0].place_id || '' };
     }
-    const result = await findPlaceByName(query, apiKey, cityCenter);
+    const result = await findPlaceByName(apiQuery, apiKey, cityCenter);
     if (!result) return null;
     console.log('[Chat/Geocode] Cache MISS → stored: ' + key);
     await sql`
@@ -101,7 +125,7 @@ async function cachedFindPlace(sql, query, apiKey, cityCenter) {
     return result;
   } catch (err) {
     console.warn('[Chat/Geocode] Cache error, falling back to API:', err.message);
-    return findPlaceByName(query, apiKey, cityCenter);
+    return findPlaceByName(apiQuery, apiKey, cityCenter);
   }
 }
 
@@ -534,6 +558,9 @@ Every time you mention a specific place (restaurant, cafe, attraction, hotel, sh
 The lat,lng field is REQUIRED — always include the real GPS coordinates so the place can be pinned on a map. Use decimal degrees (e.g. 25.2048,55.2708). Never omit coordinates.
 Never write a place name without the [PLACE:] tag — the app uses these tags to let users save places to their map.
 
+CITY TAG (REQUIRED when the response is about a single city):
+At the very start of your response, output one [CITY_EN: City Name In English] tag using the official English name. Examples: [CITY_EN: Dubai], [CITY_EN: Paris], [CITY_EN: Tokyo], [CITY_EN: New York City]. Do this even when the user asked in another language (Hebrew, Spanish, etc.). The tag is critical — it lets the app cache lookups consistently across languages. Omit only for multi-city or non-city responses.
+
 Categories: Landmark, Restaurant, Shopping, Hotel, Nature, Entertainment, Museum, Beach, Nightlife, Adventure, Culture, Cafe, Ice Cream, Dessert
 
 EXAMPLES:
@@ -616,6 +643,13 @@ RULES (apply to all responses):
     // 4th capture group (lat,lng) is optional — gracefully handles responses without coords
     const placeRegex = /\[PLACE:\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|\]]+?)\s*(?:\|\s*([-\d.]+\s*,\s*[-\d.]+))?\s*\]/g;
 
+    // [CITY_EN:] is Gemini's authoritative English city name — used as the
+    // canonical city for every place in this response so cache keys are
+    // language-agnostic (Hebrew/Arabic queries hit the same row as English).
+    const cityEnMatch = fullText.match(/\[CITY_EN:\s*([^\]]+)\]/);
+    const englishCity = cityEnMatch ? cityEnMatch[1].trim() : null;
+    const cityForPlaces = englishCity || resolvedCity || undefined;
+
     const parseCoords = (raw) => {
       if (!raw) return null;
       const [latStr, lngStr] = raw.split(',');
@@ -647,7 +681,7 @@ RULES (apply to all responses):
             title: placeMatch[1].trim(),
             category: placeMatch[2].trim(),
             description: placeMatch[3].trim(),
-            city: resolvedCity || undefined,
+            city: cityForPlaces,
             _geminiLat: geminiCoords ? geminiCoords.lat : undefined,
             _geminiLng: geminiCoords ? geminiCoords.lng : undefined,
           });
@@ -664,7 +698,7 @@ RULES (apply to all responses):
           title: match[1].trim(),
           category: match[2].trim(),
           description: match[3].trim(),
-          city: resolvedCity || undefined,
+          city: cityForPlaces,
           _geminiLat: geminiCoords ? geminiCoords.lat : undefined,
           _geminiLng: geminiCoords ? geminiCoords.lng : undefined,
         });
@@ -676,15 +710,18 @@ RULES (apply to all responses):
 
     const firstDayIndex = dayMatches.length > 0 ? dayMatches[0].index : fullText.length;
     const cleanIntro = fullText.substring(0, firstDayIndex).trim()
+      .replace(/\[CITY_EN:[^\]]*\]/g, '')
       .replace(/\[PLACE:\s*([^|]+)\s*\|[^\]]*\]/g, (_, name) => name.trim())
       .replace(/\[DAY:[^\]]*\]/g, '')
       .replace(/\*/g, '')
       .trim();
 
     const totalPlaces = dayGroups.reduce((sum, day) => sum + day.places.length, 0);
-    console.log(`[Chat] Extracted ${totalPlaces} places across ${dayGroups.length} group(s)`);
+    console.log(`[Chat] Extracted ${totalPlaces} places across ${dayGroups.length} group(s)` + (englishCity ? ` (city=${englishCity})` : ''));
 
-    let responseCity = resolvedCity || city;
+    // Prefer Gemini's [CITY_EN:] tag — it's reliable across input languages
+    // where our regex-based extraction often fails (e.g. Hebrew without ב prefix).
+    let responseCity = englishCity || resolvedCity || city;
     if (!responseCity && totalPlaces > 0) {
       const cityMatch2 = fullText.match(/\b(?:in|to|visiting)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/);
       responseCity = cityMatch2 ? cityMatch2[1] : '';
@@ -699,7 +736,6 @@ RULES (apply to all responses):
       if (place._geminiLat != null && place._geminiLng != null) {
         place.lat = place._geminiLat;
         place.lng = place._geminiLng;
-        place.quality = 'approximate';
       }
       delete place._geminiLat;
       delete place._geminiLng;
@@ -722,7 +758,10 @@ RULES (apply to all responses):
 
 // Geocode endpoint with Postgres cache (checks cache FIRST to save API calls)
 app.post('/api/geocode', async (req, res) => {
-  const { address, lat, lng, cityCenter } = req.body;
+  // `address` is the place name (e.g. "Atlantis The Palm"). `city` (optional)
+  // is split out so the cache key can use the canonical English form,
+  // surviving language switches in the chat (Hebrew דובאי -> Dubai etc.).
+  const { address, city, lat, lng, cityCenter } = req.body;
   const isReverse = typeof lat === 'number' && typeof lng === 'number' && !address;
 
   if (!address && !isReverse) {
@@ -753,18 +792,19 @@ app.post('/api/geocode', async (req, res) => {
 
   // For forward lookups, use the shared cachedFindPlace helper
   if (!isReverse) {
+    const apiQuery = city ? `${address}, ${city}` : address;
     try {
       let sql = null;
       if (process.env.DATABASE_URL) {
         sql = neon(process.env.DATABASE_URL);
         await ensureGeoTable(sql);
       }
-      const result = await cachedFindPlace(sql, address, mapsApiKey, validCityCenter);
+      const result = await cachedFindPlace(sql, address, mapsApiKey, validCityCenter, city);
       if (!result) return res.status(404).json({ error: 'Geocoding returned no results' });
       return res.json({ ...result, cached: false });
     } catch (error) {
       console.error('[Geocode] Error:', error);
-      const result = await findPlaceByName(address, mapsApiKey, validCityCenter);
+      const result = await findPlaceByName(apiQuery, mapsApiKey, validCityCenter);
       if (!result) return res.status(404).json({ error: 'Geocoding returned no results' });
       return res.json({ ...result, cached: false });
     }

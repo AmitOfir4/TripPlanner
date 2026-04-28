@@ -16,9 +16,6 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   dayGroups?: DayGroup[];
-  /** Denormalised flat list of every place across `dayGroups`. Convenience
-   * accessor for non-rendering consumers (e.g. city detection). */
-  places?: TripRecommendation[];
 }
 
 interface ChatInterfaceProps {

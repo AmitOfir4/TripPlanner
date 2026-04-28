@@ -1,14 +1,12 @@
-import { TripRecommendation } from "./types";
 import { ChatMessage, DayGroup } from "./components/ChatInterface";
 
 // Backend API endpoints
-const CHAT_ENDPOINT = import.meta.env.VITE_CHAT_ENDPOINT || 
+const CHAT_ENDPOINT = import.meta.env.VITE_CHAT_ENDPOINT ||
                       (import.meta.env.DEV ? 'http://localhost:3001/api/chat' : '/api/chat');
 
 interface ChatResponse {
   response: string;
   dayGroups?: DayGroup[];
-  places?: TripRecommendation[];
   city: string;
 }
 
@@ -43,7 +41,7 @@ export const sendChatMessage = async (
 
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
-  let result: ChatResponse = { response: '', dayGroups: [], places: [], city };
+  let result: ChatResponse = { response: '', dayGroups: [], city };
   let buffer = '';
 
   while (true) {
@@ -63,11 +61,9 @@ export const sendChatMessage = async (
         if (data.type === 'chunk' && onChunk) {
           onChunk(data.text);
         } else if (data.type === 'done') {
-          const allPlaces = data.dayGroups?.flatMap((g: DayGroup) => g.places) || [];
           result = {
             response: data.response || '',
             dayGroups: data.dayGroups || [],
-            places: allPlaces,
             city: data.city || city
           };
         } else if (data.type === 'error') {

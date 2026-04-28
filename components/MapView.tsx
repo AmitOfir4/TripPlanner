@@ -52,7 +52,7 @@ export const MapView: React.FC<MapViewProps> = ({
     if (focusedPlace) {
       setSelectedPlace(focusedPlace);
       if (!focusedPlace.lat || !focusedPlace.lng) {
-        geocodeAddress(`${focusedPlace.title}, ${focusedPlace.city || city}`).then((result) => {
+        geocodeAddress(focusedPlace.title, focusedPlace.city || city).then((result) => {
           if (result) setGeocodedFocusedPlace({ place: focusedPlace, lat: result.lat, lng: result.lng });
         });
       } else {
@@ -72,7 +72,7 @@ export const MapView: React.FC<MapViewProps> = ({
       if (geocodingInFlightRef.current.has(place.title)) return;
       geocodingInFlightRef.current.add(place.title);
       const geocodeCity = place.city || layerCity || city;
-      geocodeAddress(`${place.title}, ${geocodeCity}`).then((result) => {
+      geocodeAddress(place.title, geocodeCity).then((result) => {
         if (result) setGeocodedSavedPlaces((prev) => ({ ...prev, [place.title]: { lat: result.lat, lng: result.lng } }));
       });
     });
