@@ -126,7 +126,9 @@ const App: React.FC = () => {
     // Scroll first so the user sees the map immediately; the pin updates a
     // moment later once Google Places confirms the exact coordinate.
     mapContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    handleShowInMapFromChat(place);
+    // Fire-and-forget: surface unexpected verification failures so they don't
+    // disappear silently into a swallowed promise.
+    handleShowInMapFromChat(place).catch((err) => console.error('Show-in-map verify failed:', err));
   };
 
   // ── Render ───────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback, useContext, createContext } from 'react';
 import { Send, Bot, User, Globe, ListPlus } from 'lucide-react';
 import { TripRecommendation, TripLayer } from '../types';
 import { PlaceChip } from './chat/PlaceChip';
@@ -16,6 +16,8 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   dayGroups?: DayGroup[];
+  /** Denormalised flat list of every place across `dayGroups`. Convenience
+   * accessor for non-rendering consumers (e.g. city detection). */
   places?: TripRecommendation[];
 }
 
@@ -32,13 +34,33 @@ interface ChatInterfaceProps {
   onShowInMap?: (place: TripRecommendation) => void;
 }
 
+// ── Per-message render context ──────────────────────────────────────────
+// Sub-components inside the message list (MessageBubble, DayGroupsSection)
+// only ever need read-only access to the same handful of values. Passing
+// them as props produced a 6-level deep prop chain; this context flattens it.
+interface ChatActionsContextValue {
+  isHebrew: boolean;
+  verifyingTitles: ReadonlySet<string>;
+  filterAvailablePlaces: (places: TripRecommendation[]) => TripRecommendation[];
+  onAddPlace: (place: TripRecommendation) => void;
+  onAddAll?: (places: TripRecommendation[]) => void;
+  onShowInMap?: (place: TripRecommendation) => void;
+}
+
+const ChatActionsContext = createContext<ChatActionsContextValue | null>(null);
+
+const useChatActions = (): ChatActionsContextValue => {
+  const ctx = useContext(ChatActionsContext);
+  if (!ctx) throw new Error('useChatActions must be used inside ChatActionsContext.Provider');
+  return ctx;
+};
+
 const EMPTY_TITLES: ReadonlySet<string> = new Set();
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   loading, verifyingTitles = EMPTY_TITLES, messages, savedLayers, language, onSendMessage, onAddPlace, onAddAll, onShowInMap,
 }) => {
   const [inputMessage, setInputMessage] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const isHebrew = language === 'he';
@@ -57,6 +79,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     (places: TripRecommendation[]): TripRecommendation[] =>
       places.filter((place) => !addedTitles.has(place.title.toLowerCase())),
     [addedTitles]
+  );
+
+  const actionsValue = useMemo<ChatActionsContextValue>(
+    () => ({ isHebrew, verifyingTitles, filterAvailablePlaces, onAddPlace, onAddAll, onShowInMap }),
+    [isHebrew, verifyingTitles, filterAvailablePlaces, onAddPlace, onAddAll, onShowInMap]
   );
 
   useEffect(() => {
@@ -106,25 +133,13 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         {messages.length === 0 ? (
           <EmptyChat isHebrew={isHebrew} onSuggestionClick={setInputMessage} />
         ) : (
-          <>
+          <ChatActionsContext.Provider value={actionsValue}>
             {messages.map((message) => (
-              <MessageBubble
-                key={message.id}
-                message={message}
-                isHebrew={isHebrew}
-                savedLayers={savedLayers}
-                verifyingTitles={verifyingTitles}
-                filterAvailablePlaces={filterAvailablePlaces}
-                onAddPlace={onAddPlace}
-                onAddAll={onAddAll}
-                onShowInMap={onShowInMap}
-              />
+              <MessageBubble key={message.id} message={message} />
             ))}
-
             {loading && <TypingIndicator />}
-          </>
+          </ChatActionsContext.Provider>
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Input */}
@@ -186,20 +201,8 @@ const EmptyChat: React.FC<{ isHebrew: boolean; onSuggestionClick: (text: string)
   );
 };
 
-interface MessageBubbleProps {
-  message: ChatMessage;
-  isHebrew: boolean;
-  savedLayers: TripLayer[];
-  verifyingTitles: ReadonlySet<string>;
-  filterAvailablePlaces: (places: TripRecommendation[]) => TripRecommendation[];
-  onAddPlace: (place: TripRecommendation) => void;
-  onAddAll?: (places: TripRecommendation[]) => void;
-  onShowInMap?: (place: TripRecommendation) => void;
-}
-
-const MessageBubble: React.FC<MessageBubbleProps> = ({
-  message, isHebrew, verifyingTitles, filterAvailablePlaces, onAddPlace, onAddAll, onShowInMap,
-}) => {
+const MessageBubble: React.FC<{ message: ChatMessage }> = ({ message }) => {
+  const { isHebrew } = useChatActions();
   const isUser = message.role === 'user';
 
   return (
@@ -212,44 +215,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
           <p dir="auto" className={s.bubbleText}>{message.content}</p>
         </div>
 
-        {/* Day-grouped places */}
         {message.dayGroups && message.dayGroups.length > 0 && (
-          <DayGroupsSection
-            dayGroups={message.dayGroups}
-            isHebrew={isHebrew}
-            verifyingTitles={verifyingTitles}
-            filterAvailablePlaces={filterAvailablePlaces}
-            onAddPlace={onAddPlace}
-            onAddAll={onAddAll}
-            onShowInMap={onShowInMap}
-          />
+          <DayGroupsSection dayGroups={message.dayGroups} />
         )}
-
-        {/* Legacy flat places */}
-        {!message.dayGroups && message.places && message.places.length > 0 && (() => {
-          const availablePlaces = filterAvailablePlaces(message.places);
-          if (availablePlaces.length === 0) return null;
-          return (
-            <div className="mt-3 space-y-2 w-full">
-              {availablePlaces.length > 1 && onAddAll && (
-                <button onClick={() => onAddAll(availablePlaces)} className={s.addAllBtnLegacy}>
-                  <ListPlus className="w-4 h-4" />
-                  {isHebrew ? `הוסף את כל ${availablePlaces.length} המקומות` : `Add All ${availablePlaces.length} Places`}
-                </button>
-              )}
-              {availablePlaces.map((place, idx) => (
-                <PlaceChip
-                  key={idx}
-                  place={place}
-                  isVerifying={verifyingTitles.has(place.title)}
-                  onAdd={() => onAddPlace(place)}
-                  onShowInMap={onShowInMap ? () => onShowInMap(place) : undefined}
-                  isHebrew={isHebrew}
-                />
-              ))}
-            </div>
-          );
-        })()}
 
         <span className={s.timestamp}>
           {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -259,19 +227,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
   );
 };
 
-interface DayGroupsSectionProps {
-  dayGroups: DayGroup[];
-  isHebrew: boolean;
-  verifyingTitles: ReadonlySet<string>;
-  filterAvailablePlaces: (places: TripRecommendation[]) => TripRecommendation[];
-  onAddPlace: (place: TripRecommendation) => void;
-  onAddAll?: (places: TripRecommendation[]) => void;
-  onShowInMap?: (place: TripRecommendation) => void;
-}
-
-const DayGroupsSection: React.FC<DayGroupsSectionProps> = ({
-  dayGroups, isHebrew, verifyingTitles, filterAvailablePlaces, onAddPlace, onAddAll, onShowInMap,
-}) => {
+const DayGroupsSection: React.FC<{ dayGroups: DayGroup[] }> = ({ dayGroups }) => {
+  const { isHebrew, filterAvailablePlaces, onAddAll } = useChatActions();
   const allAvailablePlaces = dayGroups.flatMap((g) => filterAvailablePlaces(g.places || []));
   const isRecommendationsMode = dayGroups.length === 1 && dayGroups[0].dayTitle === 'Recommendations';
 
@@ -284,57 +241,53 @@ const DayGroupsSection: React.FC<DayGroupsSectionProps> = ({
         </button>
       )}
 
-      {dayGroups.map((dayGroup, dayIdx) => {
-        const availablePlaces = filterAvailablePlaces(dayGroup.places || []);
-        if (availablePlaces.length === 0 && !dayGroup.dayText) return null;
+      {dayGroups.map((dayGroup, dayIdx) => (
+        <DayGroupCard
+          key={dayIdx}
+          dayGroup={dayGroup}
+          isRecommendationsMode={isRecommendationsMode}
+        />
+      ))}
+    </div>
+  );
+};
 
-        if (isRecommendationsMode) {
-          return (
-            <div key={dayIdx} className="space-y-2">
-              {availablePlaces.map((place, placeIdx) => (
-                <PlaceChip
-                  key={placeIdx}
-                  place={place}
-                  isVerifying={verifyingTitles.has(place.title)}
-                  onAdd={() => onAddPlace(place)}
-                  onShowInMap={onShowInMap ? () => onShowInMap(place) : undefined}
-                  isHebrew={isHebrew}
-                />
-              ))}
-            </div>
-          );
-        }
+const DayGroupCard: React.FC<{ dayGroup: DayGroup; isRecommendationsMode: boolean }> = ({
+  dayGroup, isRecommendationsMode,
+}) => {
+  const { filterAvailablePlaces, verifyingTitles, onAddPlace, onShowInMap, isHebrew } = useChatActions();
+  const availablePlaces = filterAvailablePlaces(dayGroup.places || []);
+  if (availablePlaces.length === 0 && !dayGroup.dayText) return null;
 
-        return (
-          <div key={dayIdx} className={s.dayCard}>
-            <div className={s.dayHeader}>
-              <span className={s.dayHeaderTitle}>{dayGroup.dayTitle}</span>
-              {availablePlaces.length > 0 && (
-                <span className={s.dayHeaderCount}>{availablePlaces.length} places</span>
-              )}
-            </div>
-            {dayGroup.dayText && (
-              <div className={s.dayText}>
-                <p dir="auto" className={s.dayTextP}>{dayGroup.dayText}</p>
-              </div>
-            )}
-            {availablePlaces.length > 0 && (
-              <div className={s.dayPlaces}>
-                {availablePlaces.map((place, placeIdx) => (
-                  <PlaceChip
-                    key={placeIdx}
-                    place={place}
-                    isVerifying={verifyingTitles.has(place.title)}
-                    onAdd={() => onAddPlace(place)}
-                    onShowInMap={onShowInMap ? () => onShowInMap(place) : undefined}
-                    isHebrew={isHebrew}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
+  const chips = availablePlaces.map((place, placeIdx) => (
+    <PlaceChip
+      key={placeIdx}
+      place={place}
+      isVerifying={verifyingTitles.has(place.title)}
+      onAdd={() => onAddPlace(place)}
+      onShowInMap={onShowInMap ? () => onShowInMap(place) : undefined}
+      isHebrew={isHebrew}
+    />
+  ));
+
+  if (isRecommendationsMode) {
+    return <div className="space-y-2">{chips}</div>;
+  }
+
+  return (
+    <div className={s.dayCard}>
+      <div className={s.dayHeader}>
+        <span className={s.dayHeaderTitle}>{dayGroup.dayTitle}</span>
+        {availablePlaces.length > 0 && (
+          <span className={s.dayHeaderCount}>{availablePlaces.length} places</span>
+        )}
+      </div>
+      {dayGroup.dayText && (
+        <div className={s.dayText}>
+          <p dir="auto" className={s.dayTextP}>{dayGroup.dayText}</p>
+        </div>
+      )}
+      {availablePlaces.length > 0 && <div className={s.dayPlaces}>{chips}</div>}
     </div>
   );
 };
@@ -353,4 +306,3 @@ const TypingIndicator: React.FC = () => (
     </div>
   </div>
 );
-

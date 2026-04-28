@@ -42,7 +42,6 @@ export const chatStyles = {
   timestamp: 'text-[10px] text-slate-400 mt-1 px-1',
 
   addAllBtn: 'w-full px-4 py-2.5 bg-gradient-to-r from-teal-600 to-sky-600 hover:from-teal-700 hover:to-sky-700 text-white rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 shadow-md shadow-teal-200',
-  addAllBtnLegacy: 'w-full px-4 py-2.5 bg-gradient-to-r from-teal-600 to-sky-600 hover:from-teal-700 hover:to-sky-700 text-white rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 shadow-md shadow-teal-200 mb-1',
 
   dayHeader: 'bg-gradient-to-r from-teal-600 to-sky-500 px-4 py-2.5 flex items-center justify-between',
   dayHeaderTitle: 'font-bold text-white text-sm',

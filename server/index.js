@@ -650,7 +650,6 @@ RULES (apply to all responses):
             city: resolvedCity || undefined,
             _geminiLat: geminiCoords ? geminiCoords.lat : undefined,
             _geminiLng: geminiCoords ? geminiCoords.lng : undefined,
-            needsEnrichment: true
           });
         }
         dayGroups.push({ dayTitle: currentDay.title, dayText, places: dayPlaces });
@@ -668,7 +667,6 @@ RULES (apply to all responses):
           city: resolvedCity || undefined,
           _geminiLat: geminiCoords ? geminiCoords.lat : undefined,
           _geminiLng: geminiCoords ? geminiCoords.lng : undefined,
-          needsEnrichment: true
         });
       }
       if (places.length > 0) {
@@ -702,7 +700,6 @@ RULES (apply to all responses):
         place.lat = place._geminiLat;
         place.lng = place._geminiLng;
         place.quality = 'approximate';
-        place.needsEnrichment = false;
       }
       delete place._geminiLat;
       delete place._geminiLng;

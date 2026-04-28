@@ -28,7 +28,7 @@ const verifyPlace = async (
   const query = cityForQuery ? `${place.title}, ${cityForQuery}` : place.title;
   const result = await geocodeAddress(query);
   if (result) {
-    return { ...place, lat: result.lat, lng: result.lng, quality: 'verified', needsEnrichment: false };
+    return { ...place, lat: result.lat, lng: result.lng, quality: 'verified' };
   }
   return { ...place, quality: 'approximate' };
 };

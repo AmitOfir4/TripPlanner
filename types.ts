@@ -17,7 +17,6 @@ export interface TripRecommendation {
   rating?: number;
   placeId?: string;
   customKmlIcon?: string;
-  needsEnrichment?: boolean;
   /** Source/precision of the place's coordinates.
    * - 'verified': confirmed by Google Places (exact pin)
    * - 'approximate': from Gemini only, plausible but not verified (may be off by hundreds of meters)
