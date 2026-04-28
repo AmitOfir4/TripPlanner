@@ -1,7 +1,7 @@
 /// <reference types="@types/google.maps" />
 import React, { useState, useEffect, useRef } from 'react';
 import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow, useMap } from '@vis.gl/react-google-maps';
-import { MapPin, Maximize2, Minimize2, Star, ExternalLink, Search, Edit2, Check, X, Trash2, Plus, List } from 'lucide-react';
+import { MapPin, Maximize2, Minimize2, Star, ExternalLink, Edit2, Check, X, Trash2, Plus, List } from 'lucide-react';
 import { TripRecommendation, TripLayer } from '../types';
 import { AVAILABLE_KML_ICONS } from '../constants';
 import { KmlIconSelector } from './KmlIconSelector';
@@ -37,59 +37,15 @@ export const MapView: React.FC<MapViewProps> = ({
   const [isEditingName, setIsEditingName] = useState(false);
   const [geocodedFocusedPlace, setGeocodedFocusedPlace] = useState<{ place: TripRecommendation; lat: number; lng: number } | null>(null);
   const [geocodedSavedPlaces, setGeocodedSavedPlaces] = useState<Record<string, { lat: number; lng: number }>>({});
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<google.maps.places.AutocompletePrediction[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
   const [isAddingToTrip, setIsAddingToTrip] = useState(false);
   const [editingIconForPlace, setEditingIconForPlace] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const geocodingInFlightRef = useRef<Set<string>>(new Set());
 
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const defaultCenter = (userLocation && isFinite(userLocation.lat) && isFinite(userLocation.lng))
     ? userLocation
     : { lat: 20, lng: 0 };
-
-  // Search Google Maps
-  useEffect(() => {
-    if (!searchQuery.trim() || typeof google === 'undefined' || !google.maps) {
-      setSearchResults([]);
-      return;
-    }
-    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-
-    searchTimeoutRef.current = setTimeout(() => {
-      setIsSearching(true);
-      const service = new google.maps.places.AutocompleteService();
-      service.getPlacePredictions({ input: searchQuery }, (predictions, status) => {
-        setIsSearching(false);
-        setSearchResults(
-          status === google.maps.places.PlacesServiceStatus.OK && predictions ? predictions : []
-        );
-      });
-    }, 300);
-
-    return () => { if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current); };
-  }, [searchQuery, city]);
-
-  const handleSelectSearchResult = (prediction: google.maps.places.AutocompletePrediction) => {
-    setSearchResults([]);
-    setSearchQuery('');
-    const geocoder = new google.maps.Geocoder();
-    geocoder.geocode({ placeId: prediction.place_id }, (results, status) => {
-      if (status === 'OK' && results && results[0]) {
-        const location = results[0].geometry.location;
-        setSelectedPlace({
-          title: prediction.structured_formatting.main_text,
-          description: prediction.description,
-          category: 'Other',
-          lat: location.lat(),
-          lng: location.lng(),
-        });
-      }
-    });
-  };
 
   // Geocode focused place
   useEffect(() => {
@@ -149,33 +105,6 @@ export const MapView: React.FC<MapViewProps> = ({
           </div>
         </div>
 
-        {/* Search Bar */}
-        <div className={vs.searchBarWrap}>
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Search any place on Google Maps..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={() => setSelectedPlace(null)}
-              className={vs.searchInput}
-            />
-            {isSearching && (
-              <div className={vs.searchingDropdown}><div className="text-sm text-slate-500">Searching...</div></div>
-            )}
-            {!isSearching && searchResults.length > 0 && (
-              <div className={vs.searchResultsDropdown}>
-                {searchResults.map((prediction) => (
-                  <button key={prediction.place_id} onClick={() => handleSelectSearchResult(prediction)} className={vs.searchResultItem}>
-                    <div className={vs.searchResultTitle}>{prediction.structured_formatting.main_text}</div>
-                    <div className={vs.searchResultSubtitle}>{prediction.structured_formatting.secondary_text}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
 
         {savedLayers.length > 0 && (
           <button onClick={() => setIsSidebarOpen((v) => !v)} className={vs.sidebarToggleBtn(isSidebarOpen)} title={isSidebarOpen ? 'Hide trip summary' : 'Show trip summary'}>

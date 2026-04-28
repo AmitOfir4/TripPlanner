@@ -12,7 +12,8 @@ interface ChatResponse {
   city: string;
 }
 
-// Send a chat message and stream the response via SSE
+// Send a chat message and stream the response via SSE.
+// `onChunk` fires for each text token from Gemini.
 export const sendChatMessage = async (
   city: string,
   message: string,

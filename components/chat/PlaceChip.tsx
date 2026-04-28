@@ -1,17 +1,20 @@
 import React from 'react';
-import { MapPin, Plus } from 'lucide-react';
+import { MapPin, Plus, Loader2 } from 'lucide-react';
 import { TripRecommendation } from '../../types';
 import { placeChipStyles as s } from '../../styles/chat';
 import { buildGoogleMapsUrl } from '../../helpers/urlHelper';
 
 interface PlaceChipProps {
   place: TripRecommendation;
+  /** True while the chat hook is calling Google Places to verify exact coords
+   * before saving. Replaces the Add button with a spinner and disables it. */
+  isVerifying?: boolean;
   onAdd: () => void;
   onShowInMap?: () => void;
   isHebrew?: boolean;
 }
 
-export const PlaceChip: React.FC<PlaceChipProps> = ({ place, onAdd, onShowInMap, isHebrew }) => (
+export const PlaceChip: React.FC<PlaceChipProps> = ({ place, isVerifying, onAdd, onShowInMap, isHebrew }) => (
   <div className={s.wrapper}>
     <div className={s.inner}>
       <div className="flex-1 min-w-0">
@@ -32,16 +35,25 @@ export const PlaceChip: React.FC<PlaceChipProps> = ({ place, onAdd, onShowInMap,
             {isHebrew ? 'גוגל מפות' : 'Google Maps'}
           </a>
           {onShowInMap && (
-            <button onClick={onShowInMap} className={s.showInMapBtn}>
+            <button onClick={onShowInMap} className={s.showInMapBtn} disabled={isVerifying}>
               <MapPin className="w-3 h-3" />
               {isHebrew ? 'הצג במפה' : 'Show in Map'}
             </button>
           )}
         </div>
       </div>
-      <button onClick={onAdd} className={s.addBtn}>
-        <Plus className="w-3 h-3" />
-        {isHebrew ? 'הוסף' : 'Add'}
+      <button onClick={onAdd} className={s.addBtn} disabled={isVerifying}>
+        {isVerifying ? (
+          <>
+            <Loader2 className="w-3 h-3 animate-spin" />
+            {isHebrew ? 'מאמת…' : 'Verifying…'}
+          </>
+        ) : (
+          <>
+            <Plus className="w-3 h-3" />
+            {isHebrew ? 'הוסף' : 'Add'}
+          </>
+        )}
       </button>
     </div>
   </div>

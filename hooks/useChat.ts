@@ -1,15 +1,37 @@
 import { useState } from 'react';
 import { ChatMessage } from '../components/ChatInterface';
 import { sendChatMessage } from '../chatService';
+import { geocodeAddress } from '../services/geocodeService';
 import { TripRecommendation } from '../types';
 
 interface UseChatReturn {
   chatMessages: ChatMessage[];
   chatLoading: boolean;
+  /** Titles of places currently being verified via Google Places. Set during
+   * both Add and Show-in-Map flows; chips show a spinner / disable buttons. */
+  verifyingTitles: ReadonlySet<string>;
   handleSendMessage: (message: string) => Promise<void>;
-  handleAddPlaceFromChat: (place: TripRecommendation) => void;
-  handleAddAllPlaces: (places: TripRecommendation[]) => void;
+  handleAddPlaceFromChat: (place: TripRecommendation) => Promise<void>;
+  handleAddAllPlaces: (places: TripRecommendation[]) => Promise<void>;
+  handleShowInMapFromChat: (place: TripRecommendation) => Promise<void>;
 }
+
+// Resolve a place to its precise Google Places coordinates before saving.
+// Returns the place with verified coords + quality:'verified' on success,
+// or the original place with quality:'approximate' if Places couldn't find it
+// (the user still gets the pin, just flagged as unverified).
+const verifyPlace = async (
+  place: TripRecommendation,
+  cityHint: string
+): Promise<TripRecommendation> => {
+  const cityForQuery = place.city || cityHint;
+  const query = cityForQuery ? `${place.title}, ${cityForQuery}` : place.title;
+  const result = await geocodeAddress(query);
+  if (result) {
+    return { ...place, lat: result.lat, lng: result.lng, quality: 'verified', needsEnrichment: false };
+  }
+  return { ...place, quality: 'approximate' };
+};
 
 export const useChat = (
   currentCity: string,
@@ -21,6 +43,15 @@ export const useChat = (
 ): UseChatReturn => {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
+  const [verifyingTitles, setVerifyingTitles] = useState<ReadonlySet<string>>(new Set());
+
+  const markVerifying = (titles: string[], on: boolean) => {
+    setVerifyingTitles((prev) => {
+      const next = new Set(prev);
+      for (const t of titles) on ? next.add(t) : next.delete(t);
+      return next;
+    });
+  };
 
   const handleSendMessage = async (message: string) => {
     if (!apiKey) {
@@ -85,23 +116,52 @@ export const useChat = (
     }
   };
 
-  const handleAddPlaceFromChat = (place: TripRecommendation) => {
-    savePlace(place);
-    setFocusedPlace(place);
+  const handleAddPlaceFromChat = async (place: TripRecommendation) => {
+    markVerifying([place.title], true);
+    try {
+      const verified = await verifyPlace(place, currentCity);
+      savePlace(verified);
+      setFocusedPlace(verified);
+    } finally {
+      markVerifying([place.title], false);
+    }
   };
 
-  const handleAddAllPlaces = (places: TripRecommendation[]) => {
-    places.forEach((place) => savePlace(place));
-    if (places.length > 0) {
-      setFocusedPlace(places[0]);
+  // Verify before focusing so the map pans to the exact Places-confirmed
+  // coordinate, not Gemini's approximate guess. Same in-session cache as Add,
+  // so clicking Show-in-Map then Add (or vice-versa) only costs one API call.
+  const handleShowInMapFromChat = async (place: TripRecommendation) => {
+    markVerifying([place.title], true);
+    try {
+      const verified = await verifyPlace(place, currentCity);
+      setFocusedPlace(verified);
+    } finally {
+      markVerifying([place.title], false);
+    }
+  };
+
+  const handleAddAllPlaces = async (places: TripRecommendation[]) => {
+    if (places.length === 0) return;
+    const titles = places.map((p) => p.title);
+    markVerifying(titles, true);
+    try {
+      // Verify in parallel — geocodeService dedupes concurrent identical queries
+      // and caches results in-session, so the second click on the same place is free.
+      const verified = await Promise.all(places.map((p) => verifyPlace(p, currentCity)));
+      verified.forEach((p) => savePlace(p));
+      setFocusedPlace(verified[0]);
+    } finally {
+      markVerifying(titles, false);
     }
   };
 
   return {
     chatMessages,
     chatLoading,
+    verifyingTitles,
     handleSendMessage,
     handleAddPlaceFromChat,
     handleAddAllPlaces,
+    handleShowInMapFromChat,
   };
 };

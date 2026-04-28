@@ -73,6 +73,6 @@ export const placeChipStyles = {
   categoryBadge: 'text-[10px] font-semibold text-teal-700 bg-teal-100 px-2 py-0.5 rounded-full',
   rating: 'text-[10px] font-semibold text-amber-600',
   mapLink: 'flex items-center gap-0.5 text-[10px] font-medium text-slate-400 hover:text-teal-600 transition-colors',
-  showInMapBtn: 'flex items-center gap-0.5 text-[10px] font-medium text-slate-400 hover:text-sky-600 transition-colors',
-  addBtn: 'flex items-center gap-1 px-2.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-semibold transition-colors shrink-0 shadow-sm',
+  showInMapBtn: 'flex items-center gap-0.5 text-[10px] font-medium text-slate-400 hover:text-sky-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
+  addBtn: 'flex items-center gap-1 px-2.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-semibold transition-colors shrink-0 shadow-sm disabled:bg-slate-400 disabled:cursor-not-allowed',
 } as const;

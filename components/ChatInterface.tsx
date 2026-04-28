@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Send, Bot, User, Globe, ListPlus } from 'lucide-react';
 import { TripRecommendation, TripLayer } from '../types';
 import { PlaceChip } from './chat/PlaceChip';
@@ -21,6 +21,8 @@ export interface ChatMessage {
 
 interface ChatInterfaceProps {
   loading: boolean;
+  /** Titles of places currently being verified via Google Places before save. */
+  verifyingTitles?: ReadonlySet<string>;
   messages: ChatMessage[];
   savedLayers: TripLayer[];
   language: 'en' | 'he';
@@ -30,8 +32,10 @@ interface ChatInterfaceProps {
   onShowInMap?: (place: TripRecommendation) => void;
 }
 
+const EMPTY_TITLES: ReadonlySet<string> = new Set();
+
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({
-  loading, messages, savedLayers, language, onSendMessage, onAddPlace, onAddAll, onShowInMap,
+  loading, verifyingTitles = EMPTY_TITLES, messages, savedLayers, language, onSendMessage, onAddPlace, onAddAll, onShowInMap,
 }) => {
   const [inputMessage, setInputMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -39,11 +43,21 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const isHebrew = language === 'he';
 
-  const isPlaceAdded = (place: TripRecommendation): boolean =>
-    savedLayers.some((layer) => layer.places.some((p) => p.title.toLowerCase() === place.title.toLowerCase()));
+  // O(layers × places) Set built once per render — replaces the original
+  // O(messages × places × layers × places) nested-loop check on every render.
+  const addedTitles = useMemo(() => {
+    const set = new Set<string>();
+    for (const layer of savedLayers) {
+      for (const p of layer.places) set.add(p.title.toLowerCase());
+    }
+    return set;
+  }, [savedLayers]);
 
-  const filterAvailablePlaces = (places: TripRecommendation[]): TripRecommendation[] =>
-    places.filter((place) => !isPlaceAdded(place));
+  const filterAvailablePlaces = useCallback(
+    (places: TripRecommendation[]): TripRecommendation[] =>
+      places.filter((place) => !addedTitles.has(place.title.toLowerCase())),
+    [addedTitles]
+  );
 
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -99,6 +113,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 message={message}
                 isHebrew={isHebrew}
                 savedLayers={savedLayers}
+                verifyingTitles={verifyingTitles}
                 filterAvailablePlaces={filterAvailablePlaces}
                 onAddPlace={onAddPlace}
                 onAddAll={onAddAll}
@@ -175,6 +190,7 @@ interface MessageBubbleProps {
   message: ChatMessage;
   isHebrew: boolean;
   savedLayers: TripLayer[];
+  verifyingTitles: ReadonlySet<string>;
   filterAvailablePlaces: (places: TripRecommendation[]) => TripRecommendation[];
   onAddPlace: (place: TripRecommendation) => void;
   onAddAll?: (places: TripRecommendation[]) => void;
@@ -182,7 +198,7 @@ interface MessageBubbleProps {
 }
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({
-  message, isHebrew, filterAvailablePlaces, onAddPlace, onAddAll, onShowInMap,
+  message, isHebrew, verifyingTitles, filterAvailablePlaces, onAddPlace, onAddAll, onShowInMap,
 }) => {
   const isUser = message.role === 'user';
 
@@ -201,6 +217,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
           <DayGroupsSection
             dayGroups={message.dayGroups}
             isHebrew={isHebrew}
+            verifyingTitles={verifyingTitles}
             filterAvailablePlaces={filterAvailablePlaces}
             onAddPlace={onAddPlace}
             onAddAll={onAddAll}
@@ -224,6 +241,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                 <PlaceChip
                   key={idx}
                   place={place}
+                  isVerifying={verifyingTitles.has(place.title)}
                   onAdd={() => onAddPlace(place)}
                   onShowInMap={onShowInMap ? () => onShowInMap(place) : undefined}
                   isHebrew={isHebrew}
@@ -244,6 +262,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
 interface DayGroupsSectionProps {
   dayGroups: DayGroup[];
   isHebrew: boolean;
+  verifyingTitles: ReadonlySet<string>;
   filterAvailablePlaces: (places: TripRecommendation[]) => TripRecommendation[];
   onAddPlace: (place: TripRecommendation) => void;
   onAddAll?: (places: TripRecommendation[]) => void;
@@ -251,7 +270,7 @@ interface DayGroupsSectionProps {
 }
 
 const DayGroupsSection: React.FC<DayGroupsSectionProps> = ({
-  dayGroups, isHebrew, filterAvailablePlaces, onAddPlace, onAddAll, onShowInMap,
+  dayGroups, isHebrew, verifyingTitles, filterAvailablePlaces, onAddPlace, onAddAll, onShowInMap,
 }) => {
   const allAvailablePlaces = dayGroups.flatMap((g) => filterAvailablePlaces(g.places || []));
   const isRecommendationsMode = dayGroups.length === 1 && dayGroups[0].dayTitle === 'Recommendations';
@@ -276,6 +295,7 @@ const DayGroupsSection: React.FC<DayGroupsSectionProps> = ({
                 <PlaceChip
                   key={placeIdx}
                   place={place}
+                  isVerifying={verifyingTitles.has(place.title)}
                   onAdd={() => onAddPlace(place)}
                   onShowInMap={onShowInMap ? () => onShowInMap(place) : undefined}
                   isHebrew={isHebrew}
@@ -304,6 +324,7 @@ const DayGroupsSection: React.FC<DayGroupsSectionProps> = ({
                   <PlaceChip
                     key={placeIdx}
                     place={place}
+                    isVerifying={verifyingTitles.has(place.title)}
                     onAdd={() => onAddPlace(place)}
                     onShowInMap={onShowInMap ? () => onShowInMap(place) : undefined}
                     isHebrew={isHebrew}
@@ -332,3 +353,4 @@ const TypingIndicator: React.FC = () => (
     </div>
   </div>
 );
+

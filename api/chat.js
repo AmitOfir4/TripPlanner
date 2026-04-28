@@ -1,6 +1,5 @@
 // Vercel Serverless Function - Streaming AI Chat Travel Agent
 import { GoogleGenAI } from '@google/genai';
-import { neon } from '@neondatabase/serverless';
 
 // Grammatical function words — structural words that can never be part of a real city name.
 // Checked against every word in the candidate (not just the first).
@@ -62,80 +61,6 @@ function extractCityFromMessage(message) {
   }
 
   return null;
-}
-
-// ── Google Places API lookup for precise coordinates ────────────────────
-async function findPlace(query, apiKey, cityCenter) {
-  let url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=geometry,formatted_address,name,place_id&key=${apiKey}`;
-  if (cityCenter && cityCenter.lat && cityCenter.lng) {
-    url += `&locationbias=circle:50000@${cityCenter.lat},${cityCenter.lng}`;
-  }
-  const resp = await fetch(url);
-  const data = await resp.json();
-  if (data.status === 'OK' && data.candidates?.[0]) {
-    const c = data.candidates[0];
-    return {
-      lat: c.geometry.location.lat, lng: c.geometry.location.lng,
-      formatted_address: c.formatted_address || '', place_name: c.name || '', place_id: c.place_id || ''
-    };
-  }
-  return null;
-}
-
-
-// ── Geocode cache helpers (Neon Postgres) ───────────────────────────────
-function normalizeKey(text) {
-  return text.toLowerCase().trim().replace(/\s+/g, ' ');
-}
-
-async function ensureGeoTable(sql) {
-  await sql`
-    CREATE TABLE IF NOT EXISTS geocode_cache (
-      id SERIAL PRIMARY KEY,
-      query_key TEXT UNIQUE NOT NULL,
-      query_type TEXT NOT NULL DEFAULT 'forward',
-      lat DOUBLE PRECISION,
-      lng DOUBLE PRECISION,
-      formatted_address TEXT,
-      place_name TEXT,
-      place_id TEXT,
-      created_at TIMESTAMP DEFAULT NOW()
-    )
-  `;
-  await sql`ALTER TABLE geocode_cache ADD COLUMN IF NOT EXISTS place_id TEXT`.catch(() => {});
-}
-
-async function cachedFindPlace(sql, query, apiKey, cityCenter) {
-  if (!sql) return findPlace(query, apiKey, cityCenter);
-  const key = normalizeKey(query);
-  try {
-    const cached = await sql`
-      SELECT lat, lng, formatted_address, place_name, place_id
-      FROM geocode_cache
-      WHERE query_key = ${key}
-        AND created_at > NOW() - INTERVAL '365 days'
-      LIMIT 1
-    `;
-    if (cached.length > 0) {
-      console.log('[Chat/Geocode] Cache HIT: ' + key);
-      return { lat: cached[0].lat, lng: cached[0].lng, formatted_address: cached[0].formatted_address, place_name: cached[0].place_name, place_id: cached[0].place_id || '' };
-    }
-    const result = await findPlace(query, apiKey, cityCenter);
-    if (!result) return null;
-    console.log('[Chat/Geocode] Cache MISS \u2192 stored: ' + key);
-    await sql`
-      INSERT INTO geocode_cache (query_key, query_type, lat, lng, formatted_address, place_name, place_id)
-      VALUES (${key}, 'forward', ${result.lat}, ${result.lng}, ${result.formatted_address}, ${result.place_name}, ${result.place_id || null})
-      ON CONFLICT (query_key) DO UPDATE SET
-        lat = EXCLUDED.lat, lng = EXCLUDED.lng,
-        formatted_address = EXCLUDED.formatted_address, place_name = EXCLUDED.place_name,
-        place_id = EXCLUDED.place_id, created_at = NOW()
-    `;
-    return result;
-  } catch (err) {
-    console.warn('[Chat/Geocode] Cache error, falling back to API:', err.message);
-    return findPlace(query, apiKey, cityCenter);
-  }
 }
 
 export default async function handler(req, res) {
@@ -340,56 +265,20 @@ RULES (apply to all responses):
       }
     }
 
-    // ── Geocode all places via Google Places API (with Postgres cache) ──
-    const mapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
-    if (mapsApiKey && resolvedCity) {
-      const allPlaces = dayGroups.flatMap(g => g.places);
-      if (allPlaces.length > 0) {
-        // Set up DB cache connection
-        let sql = null;
-        if (process.env.DATABASE_URL) {
-          try {
-            sql = neon(process.env.DATABASE_URL);
-            await ensureGeoTable(sql);
-          } catch (e) {
-            console.warn('[Chat] DB cache init failed, geocoding without cache:', e.message);
-          }
-        }
-
-        const cityCenterResult = await cachedFindPlace(sql, resolvedCity, mapsApiKey).catch(() => null);
-        const cityCenter = cityCenterResult ? { lat: cityCenterResult.lat, lng: cityCenterResult.lng } : null;
-
-        console.log('[Chat] Geocoding ' + allPlaces.length + ' places' + (sql ? ' (with cache)' : ' (no cache)') + '...');
-
-        await Promise.all(allPlaces.map(async (place) => {
-          try {
-            const searchQuery = place.title + ', ' + (place.city || resolvedCity);
-            const result = await cachedFindPlace(sql, searchQuery, mapsApiKey, cityCenter);
-            if (result) {
-              place.lat = result.lat;
-              place.lng = result.lng;
-              place.placeId = result.place_id || '';
-              place.needsEnrichment = false;
-            } else if (place._geminiLat != null && place._geminiLng != null) {
-              place.lat = place._geminiLat;
-              place.lng = place._geminiLng;
-              place.needsEnrichment = false;
-            }
-          } catch (err) {
-            console.warn('[Chat] Failed to geocode "' + place.title + '":', err.message);
-            if (place._geminiLat != null && place._geminiLng != null) {
-              place.lat = place._geminiLat;
-              place.lng = place._geminiLng;
-              place.needsEnrichment = false;
-            }
-          }
-          delete place._geminiLat;
-          delete place._geminiLng;
-        }));
-
-        const geocoded = allPlaces.filter(p => p.lat != null).length;
-        console.log('[Chat] Geocoded ' + geocoded + '/' + allPlaces.length + ' places');
+    // ── Coordinate handling: pass Gemini's coords through untouched ─────
+    // Server makes ZERO Places API calls per chat message — the user pays for
+    // accuracy only when they actually add a place to their map (verified
+    // client-side via /api/geocode in services/geocodeService.ts).
+    // Coords here are flagged 'approximate' so the UI knows they're unverified.
+    for (const place of dayGroups.flatMap(g => g.places)) {
+      if (place._geminiLat != null && place._geminiLng != null) {
+        place.lat = place._geminiLat;
+        place.lng = place._geminiLng;
+        place.quality = 'approximate';
+        place.needsEnrichment = false;
       }
+      delete place._geminiLat;
+      delete place._geminiLng;
     }
 
     const firstDayIndex = dayMatches.length > 0 ? dayMatches[0].index : fullText.length;

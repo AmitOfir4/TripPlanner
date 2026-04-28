@@ -693,56 +693,19 @@ RULES (apply to all responses):
     }
 
 
-    // ── Geocode all places via Google Places API (with Postgres cache) ──
-    const mapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
-    if (mapsApiKey && resolvedCity) {
-      const allPlaces = dayGroups.flatMap(g => g.places);
-      if (allPlaces.length > 0) {
-        // Set up DB cache connection
-        let sql = null;
-        if (process.env.DATABASE_URL) {
-          try {
-            sql = neon(process.env.DATABASE_URL);
-            await ensureGeoTable(sql);
-          } catch (e) {
-            console.warn('[Chat] DB cache init failed, geocoding without cache:', e.message);
-          }
-        }
-
-        const cityCenterResult = await cachedFindPlace(sql, resolvedCity, mapsApiKey).catch(() => null);
-        const cityCenter = cityCenterResult ? { lat: cityCenterResult.lat, lng: cityCenterResult.lng } : null;
-
-        console.log('[Chat] Geocoding ' + allPlaces.length + ' places' + (sql ? ' (with cache)' : ' (no cache)') + '...');
-
-        await Promise.all(allPlaces.map(async (place) => {
-          try {
-            const searchQuery = place.title + ', ' + (place.city || resolvedCity);
-            const result = await cachedFindPlace(sql, searchQuery, mapsApiKey, cityCenter);
-            if (result) {
-              place.lat = result.lat;
-              place.lng = result.lng;
-              place.placeId = result.place_id || '';
-              place.needsEnrichment = false;
-            } else if (place._geminiLat != null && place._geminiLng != null) {
-              place.lat = place._geminiLat;
-              place.lng = place._geminiLng;
-              place.needsEnrichment = false;
-            }
-          } catch (err) {
-            console.warn('[Chat] Failed to geocode ' + place.title + ':', err.message);
-            if (place._geminiLat != null && place._geminiLng != null) {
-              place.lat = place._geminiLat;
-              place.lng = place._geminiLng;
-              place.needsEnrichment = false;
-            }
-          }
-          delete place._geminiLat;
-          delete place._geminiLng;
-        }));
-
-        const geocoded = allPlaces.filter(p => p.lat != null).length;
-        console.log('[Chat] Geocoded ' + geocoded + '/' + allPlaces.length + ' places');
+    // ── Coordinate handling: pass Gemini's coords through untouched ─────
+    // Server makes ZERO Places API calls per chat message. Accuracy is
+    // guaranteed at the moment of "Add to map" — the client verifies each
+    // place via /api/geocode before saving (services/geocodeService.ts).
+    for (const place of dayGroups.flatMap(g => g.places)) {
+      if (place._geminiLat != null && place._geminiLng != null) {
+        place.lat = place._geminiLat;
+        place.lng = place._geminiLng;
+        place.quality = 'approximate';
+        place.needsEnrichment = false;
       }
+      delete place._geminiLat;
+      delete place._geminiLng;
     }
 
     // ── Send final structured data ──────────────────────────────────────

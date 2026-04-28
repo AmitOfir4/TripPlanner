@@ -31,8 +31,8 @@ const App: React.FC = () => {
   } = useTripPlanner(userLocation, apiKey);
 
   const {
-    chatMessages, chatLoading, handleSendMessage,
-    handleAddPlaceFromChat, handleAddAllPlaces,
+    chatMessages, chatLoading, verifyingTitles, handleSendMessage,
+    handleAddPlaceFromChat, handleAddAllPlaces, handleShowInMapFromChat,
   } = useChat(currentCity, setCurrentCity, apiKey, savePlace, setFocusedPlace, setErrorMessage);
 
   const {
@@ -123,8 +123,10 @@ const App: React.FC = () => {
   };
 
   const handleViewInMap = (place: TripRecommendation) => {
-    setFocusedPlace(place);
+    // Scroll first so the user sees the map immediately; the pin updates a
+    // moment later once Google Places confirms the exact coordinate.
     mapContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    handleShowInMapFromChat(place);
   };
 
   // ── Render ───────────────────────────────────────────────────────
@@ -175,6 +177,7 @@ const App: React.FC = () => {
               <div className={s.chatColumn}>
                 <ChatInterface
                   loading={chatLoading}
+                  verifyingTitles={verifyingTitles}
                   messages={chatMessages}
                   savedLayers={savedLayers}
                   language={language}

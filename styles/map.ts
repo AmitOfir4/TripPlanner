@@ -9,14 +9,6 @@ export const mapViewStyles = {
   headerTitle: 'font-black text-slate-900',
   headerSubtitle: 'text-xs text-slate-500 font-medium',
 
-  searchBarWrap: 'flex items-center gap-3 flex-1 max-w-md mx-4',
-  searchInput: 'w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm',
-  searchingDropdown: 'absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl p-4 z-50 border border-slate-200',
-  searchResultsDropdown: 'absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl max-h-60 overflow-y-auto z-50 border border-slate-200',
-  searchResultItem: 'w-full px-4 py-3 text-left hover:bg-teal-50 transition-colors border-b border-slate-100 last:border-b-0',
-  searchResultTitle: 'font-bold text-sm text-slate-900',
-  searchResultSubtitle: 'text-xs text-slate-500 line-clamp-1',
-
   sidebarToggleBtn: (isOpen: boolean) =>
     `p-2 rounded-xl transition-colors ${isOpen ? 'bg-teal-100 text-teal-700' : 'hover:bg-white text-slate-600'}`,
   expandBtn: 'p-2 hover:bg-white rounded-xl transition-colors',

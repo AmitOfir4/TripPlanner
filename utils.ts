@@ -60,13 +60,21 @@ export const generateKml = (data: TripData): string => {
         ? `<Point><coordinates>${place.lng},${place.lat},0</coordinates></Point>`
         : '';
 
+      // ExtendedData is the only field Google My Maps reliably preserves
+      // verbatim across a round-trip. We stash IconId here so re-import can
+      // restore the original icon even when Google rewrites styleUrl/icon hrefs.
+      const extendedDataEntries = [
+        `<Data name="IconId"><value>${escapeXml(styleId)}</value></Data>`,
+        place.mapUrl ? `<Data name="GoogleMapsURL"><value>${escapeXml(place.mapUrl)}</value></Data>` : '',
+      ].filter(Boolean).join('');
+
       return `
       <Placemark>
         <name>${escapeXml(place.title)}</name>
         <description>${escapeXml(place.description)}</description>
         <styleUrl>#${styleId}</styleUrl>
         ${geometry}
-        ${place.mapUrl ? `<ExtendedData><Data name="GoogleMapsURL"><value>${escapeXml(place.mapUrl)}</value></Data></ExtendedData>` : ''}
+        <ExtendedData>${extendedDataEntries}</ExtendedData>
       </Placemark>`;
     }).join('');
 
