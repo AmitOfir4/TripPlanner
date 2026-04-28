@@ -23,7 +23,14 @@ export const PlaceChip: React.FC<PlaceChipProps> = ({ place, isVerifying, onAdd,
         <div className={s.metaRow}>
           <span className={s.categoryBadge}>{place.category}</span>
           {place.rating && (
-            <span className={s.rating}>⭐ {place.rating.toFixed(1)}</span>
+            <span
+              className={s.rating}
+              title={isHebrew
+                ? 'הערכה של ה-AI – הדירוג בפועל בגוגל מפות עשוי להיות שונה. הדירוג האמיתי יוצג לאחר ההוספה למפה.'
+                : 'AI estimate — actual Google Maps rating may differ. Real rating shown after adding to map.'}
+            >
+              ⭐ ~{place.rating.toFixed(1)}
+            </span>
           )}
           <a
             href={buildGoogleMapsUrl(place)}

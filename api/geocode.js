@@ -13,10 +13,12 @@ async function ensureTable(sql) {
       formatted_address TEXT,
       place_name TEXT,
       place_id TEXT,
+      rating DOUBLE PRECISION,
       created_at TIMESTAMP DEFAULT NOW()
     )
   `;
   await sql`ALTER TABLE geocode_cache ADD COLUMN IF NOT EXISTS place_id TEXT`.catch(() => {});
+  await sql`ALTER TABLE geocode_cache ADD COLUMN IF NOT EXISTS rating DOUBLE PRECISION`.catch(() => {});
 }
 
 function normalizeKey(text) {
@@ -33,8 +35,10 @@ function buildPlaceCacheKey(placeName, city) {
 }
 
 // Use Google Places API (Find Place) for all forward lookups — accurate for POIs, addresses, and cities
+// `rating` is bundled in the same response (no extra cost) and becomes the
+// authoritative rating for places once they're added to the map.
 async function findPlace(query, apiKey, cityCenter) {
-  let url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=geometry,formatted_address,name,place_id&key=${apiKey}`;
+  let url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=geometry,formatted_address,name,place_id,rating&key=${apiKey}`;
   if (cityCenter && cityCenter.lat && cityCenter.lng) {
     url += `&locationbias=circle:50000@${cityCenter.lat},${cityCenter.lng}`;
   }
@@ -47,7 +51,8 @@ async function findPlace(query, apiKey, cityCenter) {
       lng: c.geometry.location.lng,
       formatted_address: c.formatted_address || '',
       place_name: c.name || '',
-      place_id: c.place_id || ''
+      place_id: c.place_id || '',
+      rating: typeof c.rating === 'number' ? c.rating : null,
     };
   }
   return null;
@@ -85,9 +90,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // `address` is the place name. `city` (optional) is canonicalised separately
-  // so the cache key is language-agnostic — Hebrew/Arabic city names land on
-  // the same row as the English equivalent.
+  // `address` is the place name. `city` (optional) joins it for the Places
+  // query and is part of the cache key so two places with the same name in
+  // different cities don't collide.
   const { address, city, lat, lng, cityCenter } = req.body;
   const isReverse = typeof lat === 'number' && typeof lng === 'number' && !address;
 
@@ -130,7 +135,7 @@ export default async function handler(req, res) {
       : buildPlaceCacheKey(address, city);
 
     const cached = await sql`
-      SELECT lat, lng, formatted_address, place_name, place_id
+      SELECT lat, lng, formatted_address, place_name, place_id, rating
       FROM geocode_cache
       WHERE query_key = ${lookupKey}
         AND created_at > NOW() - INTERVAL '365 days'
@@ -151,15 +156,15 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Geocoding returned no results' });
     }
 
-    // Store in cache
+    // Store in cache (rating is forward-only — reverse geocode doesn't include it)
     console.log('[Geocode] Cache MISS → stored: ' + lookupKey);
     await sql`
-      INSERT INTO geocode_cache (query_key, query_type, lat, lng, formatted_address, place_name, place_id)
-      VALUES (${lookupKey}, ${isReverse ? 'reverse' : 'forward'}, ${result.lat}, ${result.lng}, ${result.formatted_address}, ${result.place_name}, ${result.place_id || null})
+      INSERT INTO geocode_cache (query_key, query_type, lat, lng, formatted_address, place_name, place_id, rating)
+      VALUES (${lookupKey}, ${isReverse ? 'reverse' : 'forward'}, ${result.lat}, ${result.lng}, ${result.formatted_address}, ${result.place_name}, ${result.place_id || null}, ${result.rating ?? null})
       ON CONFLICT (query_key) DO UPDATE SET
         lat = EXCLUDED.lat, lng = EXCLUDED.lng,
         formatted_address = EXCLUDED.formatted_address, place_name = EXCLUDED.place_name,
-        place_id = EXCLUDED.place_id, created_at = NOW()
+        place_id = EXCLUDED.place_id, rating = EXCLUDED.rating, created_at = NOW()
     `;
 
     return res.json({ ...result, cached: false });

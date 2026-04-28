@@ -17,11 +17,12 @@ interface UseChatReturn {
 }
 
 // Resolve a place to its precise Google Places coordinates before saving.
-// On success: returns the place with verified coords. If Places can't find it,
-// returns the place unchanged so the user still gets the (Gemini-approximate) pin.
-//
-// `city` is sent separately to the geocode endpoint so it can be canonicalised
-// to English for the cache key — Hebrew "דובאי" hits the same row as "Dubai".
+// On success: returns the place with verified coords AND the real Google Maps
+// rating (overwriting Gemini's training-data estimate). If Places returns no
+// rating for the place, the rating is cleared rather than left as the estimate
+// — better to show nothing than something misleading on the saved-on-map view.
+// If Places can't find the place at all, returns it unchanged so the user
+// still gets the (Gemini-approximate) pin.
 const verifyPlace = async (
   place: TripRecommendation,
   cityHint: string
@@ -29,7 +30,12 @@ const verifyPlace = async (
   const cityForQuery = place.city || cityHint || undefined;
   const result = await geocodeAddress(place.title, cityForQuery);
   if (result) {
-    return { ...place, lat: result.lat, lng: result.lng };
+    return {
+      ...place,
+      lat: result.lat,
+      lng: result.lng,
+      rating: typeof result.rating === 'number' ? result.rating : undefined,
+    };
   }
   return place;
 };

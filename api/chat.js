@@ -118,9 +118,11 @@ export default async function handler(req, res) {
 
 CRITICAL FORMAT RULE:
 Every time you mention a specific place (restaurant, cafe, attraction, hotel, shop, park, beach, bar, museum, etc.), you MUST wrap it in this exact tag:
-[PLACE: Place Name | Category | Description (1-2 sentences) | lat,lng]
+[PLACE: Place Name | Category | Description (1-2 sentences) | lat,lng | rating]
 
-The lat,lng field is REQUIRED — always include the real GPS coordinates so the place can be pinned on a map. Use decimal degrees (e.g. 25.2048,55.2708). Never omit coordinates.
+- lat,lng (REQUIRED): real GPS coordinates in decimal degrees, e.g. 25.2048,55.2708. Never omit.
+- rating (OPTIONAL): the typical Google Maps rating you've seen for this place, as a single decimal between 1.0 and 5.0 (e.g. 4.5). Only include when you are confident — well-known landmarks, popular restaurants, established hotels. OMIT the entire "| rating" segment when you're not confident; never invent ratings for obscure or hypothetical places.
+
 Never write a place name without the [PLACE:] tag — the app uses these tags to let users save places to their map.
 
 CITY TAG (REQUIRED when the response is about a single city):
@@ -133,15 +135,15 @@ EXAMPLES:
 User: "give me good ice cream in Dubai"
 Dubai has a great ice cream scene, from artisanal gelato to local favourites.
 
-[PLACE: Mirzam Chocolate & Sweets | Dessert | Award-winning bean-to-bar chocolatier offering creative ice cream flavours in a beautiful space. | 25.1855,55.2530]
-[PLACE: Salt | Ice Cream | Iconic Dubai street-food brand famous for its salted caramel soft serve and inventive seasonal flavours. | 25.1935,55.2792]
+[PLACE: Mirzam Chocolate & Sweets | Dessert | Award-winning bean-to-bar chocolatier offering creative ice cream flavours in a beautiful space. | 25.1855,55.2530 | 4.6]
+[PLACE: Salt | Ice Cream | Iconic Dubai street-food brand famous for its salted caramel soft serve and inventive seasonal flavours. | 25.1935,55.2792 | 4.5]
 
 User: "cheap but good restaurants in Paris"
 Paris has excellent affordable dining well beyond tourist spots. Here are the best value picks.
 
 Budget Bistros:
-[PLACE: Bouillon Chartier | Restaurant | Historic Parisian bouillon serving classic French dishes since 1896 at incredibly low prices. | 48.8729,2.3481]
-[PLACE: Le Relais de la Butte | Restaurant | Unpretentious Montmartre neighbourhood bistro with generous portions and wines by the carafe. | 48.8864,2.3428]
+[PLACE: Bouillon Chartier | Restaurant | Historic Parisian bouillon serving classic French dishes since 1896 at incredibly low prices. | 48.8729,2.3481 | 4.0]
+[PLACE: Le Relais de la Butte | Restaurant | Unpretentious Montmartre neighbourhood bistro with generous portions and wines by the carafe. | 48.8864,2.3428 | 4.4]
 
 HOW TO RESPOND (choose based on what the user is asking):
 
@@ -205,8 +207,8 @@ RULES (apply to all responses):
 
     // ── Parse structured data from completed response ───────────────────
     const dayRegex = /\[DAY:\s*([^\]]+)\]/g;
-    // 4th capture group (lat,lng) is optional — gracefully handles responses without coords
-    const placeRegex = /\[PLACE:\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|\]]+?)\s*(?:\|\s*([-\d.]+\s*,\s*[-\d.]+))?\s*\]/g;
+    // Groups: 1=name, 2=category, 3=description, 4=lat,lng (optional), 5=rating (optional).
+    const placeRegex = /\[PLACE:\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|\]]+?)\s*(?:\|\s*([-\d.]+\s*,\s*[-\d.]+))?\s*(?:\|\s*([\d.]+))?\s*\]/g;
 
     // [CITY_EN:] is Gemini's authoritative English city name — used as the
     // canonical city for every place in this response so cache keys are
@@ -222,6 +224,15 @@ RULES (apply to all responses):
       const lng = parseFloat(lngStr);
       if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
       return { lat, lng };
+    };
+
+    // Gemini's rating field is a free-text estimate from training data — clamp
+    // to the Google Maps scale and round to one decimal so the chip displays cleanly.
+    const parseRating = (raw) => {
+      if (!raw) return undefined;
+      const r = parseFloat(raw);
+      if (isNaN(r) || r < 1 || r > 5) return undefined;
+      return Math.round(r * 10) / 10;
     };
 
     const dayMatches = [];
@@ -247,6 +258,7 @@ RULES (apply to all responses):
             category: placeMatch[2].trim(),
             description: placeMatch[3].trim(),
             city: cityForPlaces,
+            rating: parseRating(placeMatch[5]),
             _geminiLat: geminiCoords?.lat,
             _geminiLng: geminiCoords?.lng,
           });
@@ -263,7 +275,8 @@ RULES (apply to all responses):
           title: match[1].trim(),
           category: match[2].trim(),
           description: match[3].trim(),
-          city: resolvedCity || undefined,
+          city: cityForPlaces,
+          rating: parseRating(match[5]),
           _geminiLat: geminiCoords?.lat,
           _geminiLng: geminiCoords?.lng,
         });

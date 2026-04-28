@@ -2,8 +2,18 @@ const GEOCODE_URL = import.meta.env.DEV
   ? 'http://localhost:3001/api/geocode'
   : '/api/geocode';
 
+interface GeocodeResult {
+  lat: number;
+  lng: number;
+  formatted_address: string;
+  place_name?: string;
+  /** Real Google Maps rating bundled with the Find Place response. `null`
+   * when the place exists but has no reviews on Google. */
+  rating?: number | null;
+}
+
 // In-memory session cache to avoid redundant network calls
-const memoryCache = new Map<string, { lat: number; lng: number; formatted_address: string; place_name: string }>();
+const memoryCache = new Map<string, GeocodeResult>();
 
 // In-flight request deduplication — concurrent calls for the same key share one fetch
 const inFlight = new Map<string, Promise<any>>();
@@ -27,7 +37,7 @@ export async function geocodeAddress(
   address: string,
   city?: string,
   cityCenter?: { lat: number; lng: number }
-): Promise<{ lat: number; lng: number; formatted_address: string } | null> {
+): Promise<GeocodeResult | null> {
   const key = forwardKey(address, city);
   const hit = memoryCache.get(key);
   if (hit) return hit;
@@ -59,10 +69,19 @@ export async function geocodeAddress(
   return promise;
 }
 
-export async function reverseGeocode(lat: number, lng: number): Promise<{ place_name: string; formatted_address: string; lat: number; lng: number } | null> {
+interface ReverseGeocodeResult {
+  place_name: string;
+  formatted_address: string;
+  lat: number;
+  lng: number;
+}
+
+export async function reverseGeocode(lat: number, lng: number): Promise<ReverseGeocodeResult | null> {
   const key = reverseKey(lat, lng);
   const hit = memoryCache.get(key);
-  if (hit) return hit;
+  // Reverse-geocode entries always come back with place_name populated
+  // (the server-side `geocodeReverse` guarantees it), so this cast is safe.
+  if (hit) return hit as ReverseGeocodeResult;
 
   if (inFlight.has(key)) return inFlight.get(key)!;
 
