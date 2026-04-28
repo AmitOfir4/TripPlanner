@@ -28,7 +28,7 @@ const verifyPlace = async (
   cityHint: string
 ): Promise<TripRecommendation> => {
   const cityForQuery = place.city || cityHint || undefined;
-  const result = await geocodeAddress(place.title, cityForQuery);
+  const result = await geocodeAddress(place.title, cityForQuery, undefined, place.country);
   if (result) {
     return {
       ...place,

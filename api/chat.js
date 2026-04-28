@@ -118,15 +118,16 @@ export default async function handler(req, res) {
 
 CRITICAL FORMAT RULE:
 Every time you mention a specific place (restaurant, cafe, attraction, hotel, shop, park, beach, bar, museum, etc.), you MUST wrap it in this exact tag:
-[PLACE: Place Name | Category | Description (1-2 sentences) | lat,lng | rating]
+[PLACE: Place Name | Category | Description (1-2 sentences) | lat,lng | rating | City, CC]
 
 - lat,lng (REQUIRED): real GPS coordinates in decimal degrees, e.g. 25.2048,55.2708. Never omit.
 - rating (OPTIONAL): the typical Google Maps rating you've seen for this place, as a single decimal between 1.0 and 5.0 (e.g. 4.5). Only include when you are confident — well-known landmarks, popular restaurants, established hotels. OMIT the entire "| rating" segment when you're not confident; never invent ratings for obscure or hypothetical places.
+- City, CC (REQUIRED, never omit): the English city name and ISO-3166 alpha-2 country code for THIS specific place, e.g. "Naples, IT", "Bari, IT", "Paris, FR", "Dubai, AE". The app uses this to (a) put places from the same city in the same map layer and (b) constrain Google Maps lookups to the right country — without it, "Naples" can resolve to Florida instead of Italy. ALWAYS include this on every [PLACE:] tag, even for single-city responses where every place is in the same city. The country code MUST be exactly 2 letters.
 
 Never write a place name without the [PLACE:] tag — the app uses these tags to let users save places to their map.
 
 CITY TAG (REQUIRED when the response is about a single city):
-At the very start of your response, output one [CITY_EN: City Name In English] tag using the official English name. Examples: [CITY_EN: Dubai], [CITY_EN: Paris], [CITY_EN: Tokyo], [CITY_EN: New York City]. Do this even when the user asked in another language (Hebrew, Spanish, etc.). The tag is critical — it lets the app cache lookups consistently across languages. Omit only for multi-city or non-city responses.
+At the very start of your response, output one [CITY_EN: City Name In English] tag using the official English name. Examples: [CITY_EN: Dubai], [CITY_EN: Paris], [CITY_EN: Tokyo], [CITY_EN: New York City]. Do this even when the user asked in another language (Hebrew, Spanish, etc.). The tag is critical — it lets the app cache lookups consistently across languages. Omit for multi-city or multi-region responses (use the per-place "City, CC" field instead).
 
 Categories: Landmark, Restaurant, Shopping, Hotel, Nature, Entertainment, Museum, Beach, Nightlife, Adventure, Culture, Cafe, Ice Cream, Dessert
 
@@ -135,15 +136,30 @@ EXAMPLES:
 User: "give me good ice cream in Dubai"
 Dubai has a great ice cream scene, from artisanal gelato to local favourites.
 
-[PLACE: Mirzam Chocolate & Sweets | Dessert | Award-winning bean-to-bar chocolatier offering creative ice cream flavours in a beautiful space. | 25.1855,55.2530 | 4.6]
-[PLACE: Salt | Ice Cream | Iconic Dubai street-food brand famous for its salted caramel soft serve and inventive seasonal flavours. | 25.1935,55.2792 | 4.5]
+[PLACE: Mirzam Chocolate & Sweets | Dessert | Award-winning bean-to-bar chocolatier offering creative ice cream flavours in a beautiful space. | 25.1855,55.2530 | 4.6 | Dubai, AE]
+[PLACE: Salt | Ice Cream | Iconic Dubai street-food brand famous for its salted caramel soft serve and inventive seasonal flavours. | 25.1935,55.2792 | 4.5 | Dubai, AE]
 
 User: "cheap but good restaurants in Paris"
 Paris has excellent affordable dining well beyond tourist spots. Here are the best value picks.
 
 Budget Bistros:
-[PLACE: Bouillon Chartier | Restaurant | Historic Parisian bouillon serving classic French dishes since 1896 at incredibly low prices. | 48.8729,2.3481 | 4.0]
-[PLACE: Le Relais de la Butte | Restaurant | Unpretentious Montmartre neighbourhood bistro with generous portions and wines by the carafe. | 48.8864,2.3428 | 4.4]
+[PLACE: Bouillon Chartier | Restaurant | Historic Parisian bouillon serving classic French dishes since 1896 at incredibly low prices. | 48.8729,2.3481 | 4.0 | Paris, FR]
+[PLACE: Le Relais de la Butte | Restaurant | Unpretentious Montmartre neighbourhood bistro with generous portions and wines by the carafe. | 48.8864,2.3428 | 4.4 | Paris, FR]
+
+User: "10-day trip to southern Italy, landing in Naples then Amalfi and Puglia"
+A great mix of three regions — Naples for history and pizza, the Amalfi Coast for dramatic seaside towns, and Puglia for whitewashed villages and trulli.
+
+[DAY: Day 1 - Naples Arrival]
+[PLACE: Historic Centre of Naples | Landmark | UNESCO World Heritage old town packed with churches, palaces, and bustling piazzas. | 40.8518,14.2681 | 4.7 | Naples, IT]
+[PLACE: L'Antica Pizzeria da Michele | Restaurant | Legendary century-old pizzeria serving just two classic Neapolitan pizzas. | 40.8497,14.2681 | 4.4 | Naples, IT]
+
+[DAY: Day 4 - Amalfi Coast]
+[PLACE: Spiaggia Grande | Beach | Iconic main beach of Positano with colourful umbrellas below the cliffside town. | 40.6280,14.4892 | 4.6 | Positano, IT]
+[PLACE: Amalfi Cathedral | Landmark | Striking 9th-century cathedral with a dramatic staircase in the heart of Amalfi town. | 40.6340,14.6027 | 4.7 | Amalfi, IT]
+
+[DAY: Day 7 - Puglia / Valle d'Itria]
+[PLACE: Alberobello | Landmark | UNESCO town famous for its conical-roofed trulli houses. | 40.7833,17.2333 | 4.7 | Alberobello, IT]
+[PLACE: Polignano a Mare | Landmark | Whitewashed clifftop town above a hidden cove beach. | 40.9966,17.2179 | 4.7 | Polignano a Mare, IT]
 
 HOW TO RESPOND (choose based on what the user is asking):
 
@@ -210,8 +226,9 @@ RULES (apply to all responses):
 
     // ── Parse structured data from completed response ───────────────────
     const dayRegex = /\[DAY:\s*([^\]]+)\]/g;
-    // Groups: 1=name, 2=category, 3=description, 4=lat,lng (optional), 5=rating (optional).
-    const placeRegex = /\[PLACE:\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|\]]+?)\s*(?:\|\s*([-\d.]+\s*,\s*[-\d.]+))?\s*(?:\|\s*([\d.]+))?\s*\]/g;
+    // Groups: 1=name, 2=category, 3=description, 4=lat,lng (optional),
+    // 5=rating (optional), 6=location ("City, CC" or "City" or "CC", optional).
+    const placeRegex = /\[PLACE:\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|\]]+?)\s*(?:\|\s*([-\d.]+\s*,\s*[-\d.]+))?\s*(?:\|\s*([\d.]+))?\s*(?:\|\s*([^\]]+?))?\s*\]/g;
 
     // [CITY_EN:] is Gemini's authoritative English city name — used as the
     // canonical city for every place in this response so cache keys are
@@ -238,6 +255,24 @@ RULES (apply to all responses):
       return Math.round(r * 10) / 10;
     };
 
+    // Per-place "City, CC" trailing field. Splits city from a 2-letter country
+    // code; tolerates "City" alone, "CC" alone, or "City, Country Name" (in
+    // which case country falls through as undefined since we only honour ISO2).
+    const parseLocation = (raw) => {
+      if (!raw) return { city: undefined, country: undefined };
+      const parts = raw.split(',').map((s) => s.trim()).filter(Boolean);
+      if (parts.length === 0) return { city: undefined, country: undefined };
+      if (parts.length === 1) {
+        if (/^[A-Za-z]{2}$/.test(parts[0])) return { city: undefined, country: parts[0].toUpperCase() };
+        return { city: parts[0], country: undefined };
+      }
+      const last = parts[parts.length - 1];
+      if (/^[A-Za-z]{2}$/.test(last)) {
+        return { city: parts.slice(0, -1).join(', '), country: last.toUpperCase() };
+      }
+      return { city: parts.join(', '), country: undefined };
+    };
+
     const dayMatches = [];
     let dayMatch;
     while ((dayMatch = dayRegex.exec(fullText)) !== null) {
@@ -256,11 +291,13 @@ RULES (apply to all responses):
         let placeMatch;
         while ((placeMatch = placeRegex.exec(daySection)) !== null) {
           const geminiCoords = parseCoords(placeMatch[4]);
+          const loc = parseLocation(placeMatch[6]);
           dayPlaces.push({
             title: placeMatch[1].trim(),
             category: placeMatch[2].trim(),
             description: placeMatch[3].trim(),
-            city: cityForPlaces,
+            city: loc.city || cityForPlaces,
+            country: loc.country,
             rating: parseRating(placeMatch[5]),
             _geminiLat: geminiCoords?.lat,
             _geminiLng: geminiCoords?.lng,
@@ -274,11 +311,13 @@ RULES (apply to all responses):
       let match;
       while ((match = placeRegex.exec(fullText)) !== null) {
         const geminiCoords = parseCoords(match[4]);
+        const loc = parseLocation(match[6]);
         places.push({
           title: match[1].trim(),
           category: match[2].trim(),
           description: match[3].trim(),
-          city: cityForPlaces,
+          city: loc.city || cityForPlaces,
+          country: loc.country,
           rating: parseRating(match[5]),
           _geminiLat: geminiCoords?.lat,
           _geminiLng: geminiCoords?.lng,
@@ -293,13 +332,31 @@ RULES (apply to all responses):
     // Server makes ZERO Places API calls per chat message — the user pays for
     // accuracy only when they actually add a place to their map (verified
     // client-side via /api/geocode in services/geocodeService.ts).
-    for (const place of dayGroups.flatMap(g => g.places)) {
+    const allPlaces = dayGroups.flatMap(g => g.places);
+    for (const place of allPlaces) {
       if (place._geminiLat != null && place._geminiLng != null) {
         place.lat = place._geminiLat;
         place.lng = place._geminiLng;
       }
       delete place._geminiLat;
       delete place._geminiLng;
+    }
+
+    // ── Country backfill ────────────────────────────────────────────────
+    // Gemini sometimes omits "| City, CC" on a few places even when the prompt
+    // requires it. For places missing a country, infer it from the most common
+    // country among siblings — a 30-place southern-Italy itinerary with 4
+    // strays still gets all 34 geocoded against IT. Keeps Naples-Florida
+    // collisions from sneaking back in via the partial-tag path.
+    const countryCounts = {};
+    for (const p of allPlaces) {
+      if (p.country) countryCounts[p.country] = (countryCounts[p.country] || 0) + 1;
+    }
+    const majorityCountry = Object.entries(countryCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+    if (majorityCountry) {
+      for (const p of allPlaces) {
+        if (!p.country) p.country = majorityCountry;
+      }
     }
 
     const firstDayIndex = dayMatches.length > 0 ? dayMatches[0].index : fullText.length;

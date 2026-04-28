@@ -64,7 +64,7 @@ export class TripService {
             const geocodeCity = place.city || layer.name || cityName;
             const cityCenter = cityCenters[geocodeCity];
             try {
-              const result = await geocodeAddress(place.title, geocodeCity, cityCenter);
+              const result = await geocodeAddress(place.title, geocodeCity, cityCenter, place.country);
               
               if (result) {
                 return {

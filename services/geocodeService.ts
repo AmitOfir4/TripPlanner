@@ -18,10 +18,11 @@ const memoryCache = new Map<string, GeocodeResult>();
 // In-flight request deduplication — concurrent calls for the same key share one fetch
 const inFlight = new Map<string, Promise<any>>();
 
-function forwardKey(address: string, city?: string): string {
-  return city
-    ? `fwd:${address.toLowerCase().trim()}|${city.toLowerCase().trim()}`
-    : `fwd:${address.toLowerCase().trim()}`;
+function forwardKey(address: string, city?: string, country?: string): string {
+  const parts = [`fwd:${address.toLowerCase().trim()}`];
+  if (city) parts.push(city.toLowerCase().trim());
+  if (country) parts.push(country.toLowerCase().trim());
+  return parts.join('|');
 }
 
 function reverseKey(lat: number, lng: number): string {
@@ -31,14 +32,17 @@ function reverseKey(lat: number, lng: number): string {
 /**
  * Forward-geocode a place. `city` (optional) is sent separately so the server
  * can canonicalise it to English in the cache key — Hebrew "דובאי" and
- * English "Dubai" then hit the same row.
+ * English "Dubai" then hit the same row. `country` (optional, ISO-3166
+ * alpha-2 like "IT") is forwarded as Google's `components=country:` filter so
+ * places like "Naples, IT" never resolve to Naples, Florida.
  */
 export async function geocodeAddress(
   address: string,
   city?: string,
-  cityCenter?: { lat: number; lng: number }
+  cityCenter?: { lat: number; lng: number },
+  country?: string
 ): Promise<GeocodeResult | null> {
-  const key = forwardKey(address, city);
+  const key = forwardKey(address, city, country);
   const hit = memoryCache.get(key);
   if (hit) return hit;
 
@@ -50,7 +54,7 @@ export async function geocodeAddress(
       const res = await fetch(GEOCODE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, city, cityCenter })
+        body: JSON.stringify({ address, city, country, cityCenter })
       });
 
       if (!res.ok) return null;

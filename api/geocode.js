@@ -26,20 +26,29 @@ function normalizeKey(text) {
   return text.toLowerCase().trim().replace(/\s+/g, ' ');
 }
 
-/** Cache key shape: `placeName, city` (lowercased) or just `placeName`.
- *  Matches the legacy `normalizeKey("placeName, city")` output for English
- *  inputs, so prior cache rows keep hitting.
+/** Cache key shape: `placeName, city, country` (lowercased), trailing parts
+ *  omitted when not provided. Country is included so two places with the same
+ *  name+city in different countries (Naples Italy vs Naples Florida) don't
+ *  share — and poison — the same cache row.
  */
-function buildPlaceCacheKey(placeName, city) {
-  const np = normalizeKey(placeName);
-  return city ? `${np}, ${normalizeKey(city)}` : np;
+function buildPlaceCacheKey(placeName, city, country) {
+  const parts = [normalizeKey(placeName)];
+  if (city) parts.push(normalizeKey(city));
+  if (country) parts.push(country.toLowerCase());
+  return parts.join(', ');
 }
 
 // Use Google Places API (Find Place) for all forward lookups — accurate for POIs, addresses, and cities
 // `rating` is bundled in the same response (no extra cost) and becomes the
 // authoritative rating for places once they're added to the map.
-async function findPlace(query, apiKey, cityCenter) {
+async function findPlace(query, apiKey, cityCenter, country) {
   let url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=geometry,formatted_address,name,place_id,rating&key=${apiKey}`;
+  // `components=country:XX` constrains results to the country (hard filter,
+  // not a soft bias). Critical to prevent Naples-Italy queries returning
+  // Naples-Florida.
+  if (country && /^[A-Za-z]{2}$/.test(country)) {
+    url += `&components=country:${country.toLowerCase()}`;
+  }
   if (cityCenter && cityCenter.lat && cityCenter.lng) {
     url += `&locationbias=circle:50000@${cityCenter.lat},${cityCenter.lng}`;
   }
@@ -87,8 +96,10 @@ export default async function handler(req, res) {
 
   // `address` is the place name. `city` (optional) joins it for the Places
   // query and is part of the cache key so two places with the same name in
-  // different cities don't collide.
-  const { address, city, lat, lng, cityCenter } = req.body;
+  // different cities don't collide. `country` (optional, ISO-3166 alpha-2) is
+  // sent as Google's `components=country:` filter so e.g. "Naples, IT" never
+  // resolves to Naples, Florida.
+  const { address, city, country, lat, lng, cityCenter } = req.body;
   const isReverse = typeof lat === 'number' && typeof lng === 'number' && !address;
 
   if (!address && !isReverse) {
@@ -112,7 +123,7 @@ export default async function handler(req, res) {
     console.warn('[Geocode] No DATABASE_URL — skipping cache');
     const result = isReverse
       ? await geocodeReverse(lat, lng, mapsApiKey)
-      : await findPlace(apiQuery, mapsApiKey, validCityCenter);
+      : await findPlace(apiQuery, mapsApiKey, validCityCenter, country);
 
     if (!result) {
       return res.status(404).json({ error: 'Geocoding returned no results' });
@@ -124,10 +135,10 @@ export default async function handler(req, res) {
     const sql = neon(databaseUrl);
     await ensureTable(sql);
 
-    // Cache key — `placeName, city` for forward, lat/lng-bucketed for reverse.
+    // Cache key — `placeName, city, country` for forward, lat/lng-bucketed for reverse.
     const lookupKey = isReverse
       ? `rev:${lat.toFixed(4)},${lng.toFixed(4)}`
-      : buildPlaceCacheKey(address, city);
+      : buildPlaceCacheKey(address, city, country);
 
     const cached = await sql`
       SELECT lat, lng, formatted_address, place_name, place_id, rating
@@ -145,7 +156,7 @@ export default async function handler(req, res) {
     // Cache miss — call API
     const result = isReverse
       ? await geocodeReverse(lat, lng, mapsApiKey)
-      : await findPlace(apiQuery, mapsApiKey, validCityCenter);
+      : await findPlace(apiQuery, mapsApiKey, validCityCenter, country);
 
     if (!result) {
       return res.status(404).json({ error: 'Geocoding returned no results' });
@@ -167,7 +178,7 @@ export default async function handler(req, res) {
     console.error('[Geocode] Error:', error);
     const result = isReverse
       ? await geocodeReverse(lat, lng, mapsApiKey)
-      : await findPlace(apiQuery, mapsApiKey, validCityCenter);
+      : await findPlace(apiQuery, mapsApiKey, validCityCenter, country);
 
     if (!result) {
       return res.status(404).json({ error: 'Geocoding returned no results' });
