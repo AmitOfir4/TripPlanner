@@ -77,10 +77,11 @@ export function getClientIp(req) {
 // Default per-endpoint limits per IP per minute. Tune via env if needed.
 const num = (v, d) => (Number.isFinite(+v) && +v > 0 ? +v : d);
 export const LIMITS = {
-  search:  { max: num(process.env.RATE_LIMIT_SEARCH,  30), windowMs: 60_000 },
-  enrich:  { max: num(process.env.RATE_LIMIT_ENRICH,  20), windowMs: 60_000 },
-  chat:    { max: num(process.env.RATE_LIMIT_CHAT,    20), windowMs: 60_000 },
-  geocode: { max: num(process.env.RATE_LIMIT_GEOCODE, 60), windowMs: 60_000 },
+  search:         { max: num(process.env.RATE_LIMIT_SEARCH,         30), windowMs: 60_000 },
+  enrich:         { max: num(process.env.RATE_LIMIT_ENRICH,         20), windowMs: 60_000 },
+  chat:           { max: num(process.env.RATE_LIMIT_CHAT,           20), windowMs: 60_000 },
+  geocode:        { max: num(process.env.RATE_LIMIT_GEOCODE,        60), windowMs: 60_000 },
+  'import-mymap': { max: num(process.env.RATE_LIMIT_IMPORT_MYMAP,   20), windowMs: 60_000 },
 };
 
 // ── Safe error responses ─────────────────────────────────────────────────────

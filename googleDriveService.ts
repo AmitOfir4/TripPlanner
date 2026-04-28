@@ -72,69 +72,28 @@ export async function fetchKmlFiles(accessToken: string): Promise<MyMapsFile[]> 
   }
 }
 
+// Backend endpoint that fetches the publicly-shared Google My Map KML for us.
+// In dev, point at the local Express server; in prod, the Vercel function.
+const IMPORT_MYMAP_ENDPOINT = import.meta.env.DEV
+  ? 'http://localhost:3001/api/import-mymap'
+  : '/api/import-mymap';
+
 /**
- * Downloads a My Maps file as KML
- * My Maps files must be publicly shared to download. This function attempts to:
- * 1. Download via public KML URL using a CORS proxy
- * 2. If that fails, throws error with instructions
+ * Downloads a My Maps file as KML via our backend proxy. The map must be
+ * publicly shared ("Anyone with the link") for Google to return its KML.
+ * The unused accessToken arg is kept for backward compat with callers.
  */
-export async function downloadMyMapAsKML(fileId: string, accessToken: string): Promise<string> {
+export async function downloadMyMapAsKML(fileId: string, _accessToken: string): Promise<string> {
   try {
-    // Add timestamp to bust cache
-    const timestamp = Date.now();
-    const directKmlUrl = `https://www.google.com/maps/d/u/0/kml?forcekml=1&mid=${fileId}&_=${timestamp}`;
-    
-    console.log('Attempting to download My Map KML via CORS proxy...');
-    
-    // Try multiple CORS proxies in sequence
-    const proxies = [
-      `https://corsproxy.io/?${encodeURIComponent(directKmlUrl)}`,
-      `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(directKmlUrl)}`,
-      `https://api.allorigins.win/get?url=${encodeURIComponent(directKmlUrl)}`
-    ];
-    
-    let lastError: Error | null = null;
-    
-    for (let i = 0; i < proxies.length; i++) {
-      try {
-        console.log(`Trying proxy ${i + 1}/${proxies.length}...`);
-        const response = await fetch(proxies[i], {
-          cache: 'no-store',
-          headers: {
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0'
-          }
-        });
-
-        if (!response.ok) {
-          throw new Error(`Proxy ${i + 1} failed: ${response.statusText}`);
-        }
-
-        let kmlText = await response.text();
-        
-        // For allorigins, extract the content from JSON response
-        if (proxies[i].includes('allorigins')) {
-          const data = JSON.parse(kmlText);
-          kmlText = data.contents;
-        }
-        
-        // Verify we got valid KML content
-        if (kmlText.includes('<kml') || kmlText.includes('<?xml')) {
-          console.log('Successfully downloaded KML via proxy', i + 1);
-          return kmlText;
-        }
-        
-        throw new Error('Response is not valid KML format');
-      } catch (error) {
-        console.warn(`Proxy ${i + 1} failed:`, error);
-        lastError = error as Error;
-        continue;
-      }
+    const response = await fetch(`${IMPORT_MYMAP_ENDPOINT}?mid=${encodeURIComponent(fileId)}`);
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(
+        data.message ||
+        'Failed to import map. Make sure it is shared as "Anyone with the link".'
+      );
     }
-    
-    // All proxies failed
-    throw new Error('Map is not publicly accessible or all CORS proxies failed. Please make your map public: Share > Change to "Anyone with the link"');
+    return await response.text();
   } catch (error) {
     console.error('Error downloading KML:', error);
     throw error;
