@@ -7,8 +7,8 @@ This file tells Claude how to work in this codebase. Read it before making chang
 TripPlanner ("map-layer-ai") is an AI-powered travel planner. Stack:
 
 - **Frontend:** React 19 + TypeScript + Vite, Tailwind CSS classes
-- **Backend:** Express dev server (`server/index.js`) + Vercel serverless functions (`api/*.js`)
-- **External APIs:** Google Gemini (`@google/genai`), Google Maps, Google Drive, Google OAuth, Neon (Postgres serverless)
+- **Backend:** Single Express app in `server/app.js`. The local dev launcher (`server/index.js`) calls `app.listen()`; Vercel serves the same app via a catch-all serverless function at `api/index.js` (one function fronts every `/api/*` request — see `vercel.json` rewrite).
+- **External APIs:** Google Gemini (`@google/genai`), Google Maps, Google Drive, Google OAuth, Neon (Postgres serverless), MongoDB Atlas
 - **Data formats:** KML import/export via `fast-xml-parser`
 
 Frontend and backend are both run with `npm run dev` (concurrently). `npm run build` runs `tsc && vite build`.
@@ -33,8 +33,13 @@ hooks/                   Custom React hooks (use*, camelCase)
 services/                Business logic / external API wrappers
   index.ts               Barrel export
 
-api/                     Vercel serverless functions (.js, ES modules)
-server/                  Local Express dev server (.js)
+api/                     Vercel serverless entry + shared backend helpers (.js, ES modules)
+  index.js               Single Vercel function — re-exports the Express app from server/app.js
+  _mongo.js, _auth.js, _users.js, _trips.js, _security.js  Shared backend modules (the `_` prefix keeps Vercel from routing them)
+server/                  Express app (single source of truth for backend routes)
+  app.js                 Builds & exports the Express app
+  index.js               Local dev launcher — `app.listen()`
+  routes/                Route modules mounted by app.js (one Router per resource)
 
 helpers/                 Pure utility modules (kmlIconHelper, urlHelper, ...)
 styles/                  Tailwind class-name strings, grouped by feature
@@ -69,7 +74,8 @@ Do not create new top-level folders without asking. If something doesn't fit, pr
 
 ### Backend (`server/` and `api/`)
 - ES modules (`"type": "module"`). Use `import`, not `require`.
-- The Express server in `server/index.js` and the Vercel functions in `api/*.js` often share helper logic (e.g. city extraction, geocoding). Keep them in sync — if you touch one, check the other.
+- All backend routes live in the Express app at `server/app.js` — typically as a `Router` in `server/routes/<resource>.js` mounted under `/api/<resource>`. Both the dev server and the Vercel deployment serve this same app, so a route written once is live in both environments. Don't add per-route files in `api/`.
+- Authenticated endpoints use `requireUser(req, res)` from `api/_auth.js` — return immediately if it returns null (it has already written a 401).
 - Never log API keys, OAuth tokens, or full request bodies that may contain them.
 
 ### Comments & section dividers
@@ -117,6 +123,7 @@ The repo expects these env vars in `.env` (already gitignored):
 - `API_KEY` — Gemini
 - `GOOGLE_MAPS_API_KEY`
 - `VITE_GOOGLE_CLIENT_ID` — OAuth client
-- (optionally) `DATABASE_URL` for Neon
+- `MONGODB_URI` — MongoDB Atlas connection string (saved trips + users)
+- (optionally) `DATABASE_URL` for Neon (geocode cache only)
 
 Never echo these values back, never paste them into committed files, never include them in example code beyond placeholder names.

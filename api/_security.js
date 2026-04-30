@@ -1,5 +1,6 @@
-// Shared CORS + rate-limit helpers for the Express dev server and Vercel functions.
-// File is prefixed with `_` so Vercel does not deploy it as a route.
+// Shared CORS + rate-limit helpers for the Express app (dev server + Vercel
+// single-function entry). File is prefixed with `_` so Vercel does not deploy
+// it as a route.
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
 const DEFAULT_DEV_ORIGINS = 'http://localhost:5173,http://localhost:3000';
@@ -9,27 +10,10 @@ export const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || DEFAULT_DEV_ORIGI
   .map(s => s.trim())
   .filter(Boolean);
 
-const ALLOW_METHODS = 'GET,OPTIONS,POST';
-const ALLOW_HEADERS = 'Content-Type, X-Requested-With';
+const ALLOW_METHODS = 'GET,OPTIONS,POST,PUT,PATCH,DELETE';
+const ALLOW_HEADERS = 'Content-Type, X-Requested-With, Authorization';
 
-// For Vercel raw handlers — call at the top of every handler.
-// Returns true if the request should short-circuit (preflight handled).
-export function applyCors(req, res) {
-  const origin = req.headers.origin;
-  if (origin && ALLOWED_ORIGINS.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Vary', 'Origin');
-  }
-  res.setHeader('Access-Control-Allow-Methods', ALLOW_METHODS);
-  res.setHeader('Access-Control-Allow-Headers', ALLOW_HEADERS);
-  if (req.method === 'OPTIONS') {
-    res.status(204).end();
-    return true;
-  }
-  return false;
-}
-
-// For the Express dev server — pass to `cors()`.
+// For the Express `cors()` middleware.
 export const expressCorsOptions = {
   origin: (origin, cb) => {
     if (!origin || ALLOWED_ORIGINS.includes(origin)) cb(null, true);
@@ -159,20 +143,3 @@ export const CHAT_LIMITS = {
   maxHistoryMessages: 10,
   maxHistoryCharsPerMsg: 2000,
 };
-
-// Convenience: enforce in Vercel handlers. Returns true if the request was rejected.
-export function enforceRateLimit(req, res, endpoint) {
-  const cfg = LIMITS[endpoint];
-  if (!cfg) return false;
-  const ip = getClientIp(req);
-  const { allowed, retryAfter } = checkRateLimit(`${ip}:${endpoint}`, cfg.max, cfg.windowMs);
-  if (!allowed) {
-    res.setHeader('Retry-After', String(retryAfter));
-    res.status(429).json({
-      error: 'Too many requests',
-      message: `Rate limit exceeded. Try again in ${retryAfter}s.`,
-    });
-    return true;
-  }
-  return false;
-}

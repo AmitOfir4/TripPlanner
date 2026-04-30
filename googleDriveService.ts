@@ -1,5 +1,3 @@
-
-
 export interface MyMapsFile {
   id: string;
   name: string;
@@ -10,41 +8,9 @@ export interface MyMapsFile {
 }
 
 /**
- * Fetches all Google My Maps files from the user's Google Drive
- * My Maps are stored as KML files with a specific MIME type
- */
-export async function fetchMyMaps(accessToken: string): Promise<MyMapsFile[]> {
-  try {
-    // Google My Maps are stored with application/vnd.google-apps.map MIME type
-    const query = "mimeType='application/vnd.google-apps.map' and trashed=false";
-    const timestamp = Date.now();
-    const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,createdTime,modifiedTime,thumbnailLink,webViewLink)&orderBy=modifiedTime desc&_=${timestamp}`;
-    
-    const response = await fetch(url, {
-      cache: 'no-store',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache'
-      },
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('Drive API error:', errorData);
-      throw new Error(`Failed to fetch My Maps: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.files || [];
-  } catch (error) {
-    console.error('Error fetching My Maps:', error);
-    throw error;
-  }
-}
-
-/**
- * Fetches KML files from the user's Google Drive (uploaded trip files)
+ * Fetches KML files from the user's Google Drive (uploaded trip files).
+ * Under the `drive.file` scope this returns only files this app created or
+ * opened — which is exactly what we want for the "update existing trip" flow.
  */
 export async function fetchKmlFiles(accessToken: string): Promise<MyMapsFile[]> {
   try {
@@ -69,34 +35,6 @@ export async function fetchKmlFiles(accessToken: string): Promise<MyMapsFile[]> 
   } catch (error) {
     console.error('Error fetching KML files:', error);
     return [];
-  }
-}
-
-// Backend endpoint that fetches the publicly-shared Google My Map KML for us.
-// In dev, point at the local Express server; in prod, the Vercel function.
-const IMPORT_MYMAP_ENDPOINT = import.meta.env.DEV
-  ? 'http://localhost:3001/api/import-mymap'
-  : '/api/import-mymap';
-
-/**
- * Downloads a My Maps file as KML via our backend proxy. The map must be
- * publicly shared ("Anyone with the link") for Google to return its KML.
- * The unused accessToken arg is kept for backward compat with callers.
- */
-export async function downloadMyMapAsKML(fileId: string, _accessToken: string): Promise<string> {
-  try {
-    const response = await fetch(`${IMPORT_MYMAP_ENDPOINT}?mid=${encodeURIComponent(fileId)}`);
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(
-        data.message ||
-        'Failed to import map. Make sure it is shared as "Anyone with the link".'
-      );
-    }
-    return await response.text();
-  } catch (error) {
-    console.error('Error downloading KML:', error);
-    throw error;
   }
 }
 

@@ -18,7 +18,7 @@ interface UseUploadReturn {
     accessToken: string,
     fileName: string,
     fileIdToUpdate?: string
-  ) => Promise<void>;
+  ) => Promise<{ id: string; fileName: string } | null>;
   handleDownload: (savedLayers: TripLayer[], currentCity: string) => Promise<void>;
 }
 
@@ -57,7 +57,7 @@ export const useUpload = (): UseUploadReturn => {
     accessToken: string,
     fileName: string,
     fileIdToUpdate?: string
-  ) => {
+  ): Promise<{ id: string; fileName: string } | null> => {
     setUploading(true);
     try {
       const result = await TripService.uploadToGoogleDrive(
@@ -68,9 +68,11 @@ export const useUpload = (): UseUploadReturn => {
         fileIdToUpdate
       );
       setUploadResult({ success: true, fileName: result.fileName });
+      return result;
     } catch (error) {
       console.error('Error uploading to Drive:', error);
       alert('Failed to upload to Google Drive. Please try again.');
+      return null;
     } finally {
       setUploading(false);
     }

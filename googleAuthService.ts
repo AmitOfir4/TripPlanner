@@ -1,4 +1,6 @@
 export interface GoogleUser {
+  /** Stable Google account id (`sub` claim). Used as the primary key in our DB. */
+  sub: string;
   email: string;
   name: string;
   picture: string;

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Compass, Trash2, Upload, LogIn, User, Key, X, Check, Sparkles, Languages } from 'lucide-react';
+import { Compass, Trash2, Library, LogIn, User, Key, X, Check, Sparkles, Languages } from 'lucide-react';
 import { GoogleUser } from '../googleAuthService';
 import { TRANSLATIONS } from '../constants';
 import { headerStyles as s } from '../styles/layout';
@@ -165,11 +165,11 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {/* Import & Reset */}
+          {/* My Trips & Reset */}
           {googleUser && (
             <button onClick={onImportClick} className={s.importBtn}>
-              <Upload className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Import</span>
+              <Library className="w-3.5 h-3.5" />
+              <span className="hidden md:inline">My Trips</span>
             </button>
           )}
           <button onClick={onReset} className={s.resetBtn}>
