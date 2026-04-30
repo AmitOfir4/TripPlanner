@@ -19,4 +19,6 @@ export const appStyles = {
   actionRow: 'flex gap-3',
   downloadBtn: 'flex-1 bg-teal-600 hover:bg-teal-700 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2.5 transition-all shadow-md shadow-teal-200/60 active:scale-[0.98] text-sm',
   uploadBtn: 'flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2.5 transition-all shadow-md shadow-emerald-200/60 active:scale-[0.98] text-sm',
+  saveBtn: 'flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2.5 transition-all shadow-md shadow-indigo-200/60 active:scale-[0.98] text-sm disabled:opacity-60 disabled:cursor-not-allowed',
+  tripBadge: 'flex items-center gap-2 text-xs text-slate-500 font-medium px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-full',
 } as const;

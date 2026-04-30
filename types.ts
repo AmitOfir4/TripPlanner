@@ -34,3 +34,25 @@ export interface TripData {
   layers: TripLayer[];
   sources: GroundingChunk[];
 }
+
+/** Lightweight projection used by the "My Trips" list. */
+export interface SavedTripSummary {
+  id: string;
+  title: string;
+  city: string;
+  /** ISO-8601 string from the backend. */
+  createdAt: string;
+  /** ISO-8601 string from the backend. */
+  updatedAt: string;
+}
+
+/** Full trip document returned by GET /api/trips/:id. */
+export interface SavedTripDoc extends SavedTripSummary {
+  ownerSub: string;
+  summary: string;
+  layers: TripLayer[];
+  sources: GroundingChunk[];
+  /** Set after a successful "Upload to Google Maps", so subsequent uploads
+   *  update the same Drive file in place. */
+  driveFileId?: string;
+}

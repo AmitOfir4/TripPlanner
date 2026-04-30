@@ -1,10 +1,11 @@
 import React, { useRef, useState } from 'react';
 import { Header } from './components/Header';
 import { ChatInterface } from './components/ChatInterface';
-import { ImportModal } from './components/ImportModal';
 import { UploadModal } from './components/UploadModal';
+import { SaveTripModal } from './components/SaveTripModal';
+import { MyTripsModal } from './components/MyTripsModal';
 import { MapView } from './components/MapView';
-import { Download, Upload } from 'lucide-react';
+import { Download, Upload, Save } from 'lucide-react';
 import { useGoogleAuth } from './hooks/useGoogleAuth';
 import { useApiKey } from './hooks/useApiKey';
 import { useTripPlanner } from './hooks/useTripPlanner';
@@ -12,8 +13,13 @@ import { useMapImport } from './hooks/useMapImport';
 import { useUserLocation } from './hooks/useUserLocation';
 import { useChat } from './hooks/useChat';
 import { useUpload } from './hooks/useUpload';
-import { MyMapsFile } from './googleDriveService';
-import { TripRecommendation } from './types';
+import { TripRecommendation, SavedTripSummary } from './types';
+import {
+  createSavedTrip, updateSavedTrip,
+  listSavedTrips, getSavedTrip, deleteSavedTrip,
+  setSavedTripDriveLink,
+  type TripPayload,
+} from './services/tripsService';
 import { appStyles as s } from './styles/app';
 
 const App: React.FC = () => {
@@ -34,7 +40,65 @@ const App: React.FC = () => {
   const {
     currentCity, setCurrentCity, savedLayers, setSavedLayers,
     savePlace, resetTrip,
+    tripId, tripTitle, markSaved, loadSavedTrip,
+    tripDriveFileId, setTripDriveFileId,
   } = useTripPlanner(userLocation, apiKey);
+
+  // ── Save trip state ──────────────────────────────────────────────
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const buildTripPayload = (title: string): TripPayload => ({
+    title,
+    city: currentCity || title,
+    summary: '',
+    layers: savedLayers,
+    sources: [],
+    // Carry the link through PUT updates so a save doesn't blow it away.
+    ...(tripDriveFileId ? { driveFileId: tripDriveFileId } : {}),
+  });
+
+  const handleSaveClick = () => {
+    if (!googleUser || savedLayers.length === 0) return;
+    if (tripId) {
+      // Already saved — fast-path update with the existing title.
+      void persistUpdate(tripTitle || currentCity || 'Untitled trip');
+    } else {
+      setSaveError(null);
+      setShowSaveModal(true);
+    }
+  };
+
+  const persistCreate = async (title: string) => {
+    if (!googleUser) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const trip = await createSavedTrip(buildTripPayload(title), googleUser.accessToken);
+      markSaved(trip.id, trip.title);
+      setShowSaveModal(false);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save trip');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const persistUpdate = async (title: string) => {
+    if (!googleUser || !tripId) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const trip = await updateSavedTrip(tripId, buildTripPayload(title), googleUser.accessToken);
+      markSaved(trip.id, trip.title);
+    } catch (err) {
+      // On update failure, surface via alert (no modal is open).
+      alert(err instanceof Error ? err.message : 'Failed to save trip');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const {
     chatMessages, chatLoading, verifyingTitles, handleSendMessage,
@@ -46,30 +110,56 @@ const App: React.FC = () => {
     openUploadModal, closeUploadModal, refreshDriveFiles, doUpload, handleDownload,
   } = useUpload();
 
-  const {
-    showImportModal, myMaps, loadingMaps, importingMap,
-    openImportModal, closeImportModal, importMap, importFromFile,
-  } = useMapImport();
+  const { importingMap, importFromFile } = useMapImport();
 
-  // ── Import handlers ──────────────────────────────────────────────
+  // ── My Trips state + handlers ────────────────────────────────────
+  const [showMyTripsModal, setShowMyTripsModal] = useState(false);
+  const [loadingTrips, setLoadingTrips] = useState(false);
+  const [myTrips, setMyTrips] = useState<SavedTripSummary[]>([]);
+  const [loadingTripId, setLoadingTripId] = useState<string | null>(null);
+  const [myTripsError, setMyTripsError] = useState<string | null>(null);
 
-  const handleImportFromMyMaps = async () => {
+  const handleMyTripsClick = async () => {
     if (!googleUser) { login(); return; }
+    setShowMyTripsModal(true);
+    setMyTripsError(null);
+    setLoadingTrips(true);
     try {
-      await openImportModal(googleUser.accessToken);
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to load maps');
+      const trips = await listSavedTrips(googleUser.accessToken);
+      setMyTrips(trips);
+    } catch (err) {
+      setMyTripsError(err instanceof Error ? err.message : 'Failed to load trips');
+    } finally {
+      setLoadingTrips(false);
     }
   };
 
-  const handleSelectMap = async (mapFile: MyMapsFile) => {
+  const handleSelectTrip = async (id: string) => {
     if (!googleUser) return;
+    setLoadingTripId(id);
+    setMyTripsError(null);
     try {
-      const { layers, cityName } = await importMap(mapFile, googleUser.accessToken, currentCity);
-      setSavedLayers((prev) => [...prev, ...layers]);
-      if (!currentCity) setCurrentCity(cityName);
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to import map');
+      const trip = await getSavedTrip(id, googleUser.accessToken);
+      loadSavedTrip(trip);
+      setShowMyTripsModal(false);
+    } catch (err) {
+      setMyTripsError(err instanceof Error ? err.message : 'Failed to load trip');
+    } finally {
+      setLoadingTripId(null);
+    }
+  };
+
+  const handleDeleteTrip = async (id: string) => {
+    if (!googleUser) return;
+    if (!confirm('Delete this trip? This cannot be undone.')) return;
+    try {
+      await deleteSavedTrip(id, googleUser.accessToken);
+      setMyTrips(prev => prev.filter(t => t.id !== id));
+      // If the user just deleted the trip currently loaded into state, mark it
+      // as unsaved so the next save creates a new doc instead of 404'ing.
+      if (tripId === id) markSaved('', '');
+    } catch (err) {
+      setMyTripsError(err instanceof Error ? err.message : 'Failed to delete trip');
     }
   };
 
@@ -82,6 +172,7 @@ const App: React.FC = () => {
       setSavedLayers((prev) => [...prev, ...layers]);
       if (!currentCity) setCurrentCity(cityName);
       const totalPlaces = layers.reduce((acc, l) => acc + l.places.length, 0);
+      setShowMyTripsModal(false);
       alert(`Successfully imported "${file.name}" with ${totalPlaces} places!`);
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Failed to import file');
@@ -147,7 +238,7 @@ const App: React.FC = () => {
         hasApiKey={hasApiKey}
         language={language}
         onLanguageChange={setLanguage}
-        onImportClick={handleImportFromMyMaps}
+        onImportClick={handleMyTripsClick}
         onLogout={logout}
         onReset={resetTrip}
         onApiKeyChange={setApiKey}
@@ -228,6 +319,12 @@ const App: React.FC = () => {
                   Download Map
                 </button>
                 {googleUser && (
+                  <button onClick={handleSaveClick} disabled={saving} className={s.saveBtn}>
+                    <Save className="w-4 h-4" />
+                    {saving ? 'Saving…' : tripId ? 'Save' : 'Save Trip'}
+                  </button>
+                )}
+                {googleUser && (
                   <button onClick={openUploadModal} className={s.uploadBtn}>
                     <Upload className="w-4 h-4" />
                     Upload to Google Maps
@@ -239,13 +336,16 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      <ImportModal
-        show={showImportModal}
-        loading={loadingMaps}
-        importing={importingMap}
-        maps={myMaps}
-        onClose={closeImportModal}
-        onSelectMap={handleSelectMap}
+      <MyTripsModal
+        show={showMyTripsModal}
+        loading={loadingTrips}
+        trips={myTrips}
+        loadingTripId={loadingTripId}
+        errorMessage={myTripsError}
+        importingFile={importingMap}
+        onClose={() => { if (loadingTripId === null) setShowMyTripsModal(false); }}
+        onSelectTrip={handleSelectTrip}
+        onDeleteTrip={handleDeleteTrip}
         onFileUpload={handleKMLFileUpload}
       />
 
@@ -257,10 +357,33 @@ const App: React.FC = () => {
         uploading={uploading}
         uploadResult={uploadResult}
         onClose={closeUploadModal}
-        onUpload={(fileName, fileIdToUpdate) =>
-          googleUser && doUpload(savedLayers, currentCity, googleUser.accessToken, fileName, fileIdToUpdate)
-        }
+        onUpload={async (fileName, fileIdToUpdate) => {
+          if (!googleUser) return;
+          const target = fileIdToUpdate || tripDriveFileId || undefined;
+          const result = await doUpload(savedLayers, currentCity, googleUser.accessToken, fileName, target);
+          if (result && tripId && result.id !== tripDriveFileId) {
+            // Remember the Drive file id so the next upload of this trip
+            // updates the same file in place. Failure here doesn't block the
+            // user — the upload itself already succeeded.
+            try {
+              await setSavedTripDriveLink(tripId, result.id, googleUser.accessToken);
+              setTripDriveFileId(result.id);
+            } catch (err) {
+              console.warn('Failed to persist drive linkage:', err);
+            }
+          }
+        }}
         onRefreshFiles={() => googleUser && refreshDriveFiles(googleUser.accessToken)}
+      />
+
+      <SaveTripModal
+        show={showSaveModal}
+        defaultTitle={tripTitle || currentCity || ''}
+        saving={saving}
+        errorMessage={saveError}
+        mode="create"
+        onClose={() => { if (!saving) { setShowSaveModal(false); setSaveError(null); } }}
+        onConfirm={persistCreate}
       />
     </div>
   );

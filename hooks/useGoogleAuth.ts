@@ -4,13 +4,40 @@ import { GoogleUser } from '../googleAuthService';
 
 const STORAGE_KEY = 'tripplanner_google_user';
 
+const ME_ENDPOINT = import.meta.env.VITE_ME_ENDPOINT ||
+                    (import.meta.env.DEV ? 'http://localhost:3001/api/me' : '/api/me');
+
+// Fire-and-forget upsert of the user profile in our DB after login.
+// Failures are logged but don't block the session — the user can still use
+// the app even if our backend is temporarily unreachable.
+async function upsertProfile(accessToken: string) {
+  try {
+    const res = await fetch(ME_ENDPOINT, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) {
+      console.warn('[useGoogleAuth] /api/me returned', res.status);
+    }
+  } catch (err) {
+    console.warn('[useGoogleAuth] /api/me failed:', err);
+  }
+}
+
 export const useGoogleAuth = () => {
   const [googleUser, setGoogleUser] = useState<GoogleUser | null>(() => {
     // Load from localStorage on init
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       try {
-        return JSON.parse(stored);
+        const parsed = JSON.parse(stored) as GoogleUser;
+        // Pre-`sub` cached users from older builds: drop them so we capture
+        // a stable id on the next login.
+        if (!parsed.sub) {
+          localStorage.removeItem(STORAGE_KEY);
+          return null;
+        }
+        return parsed;
       } catch (error) {
         console.error('Error parsing stored user:', error);
         return null;
@@ -59,18 +86,27 @@ export const useGoogleAuth = () => {
           headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
         });
         const userInfo = await userInfoResponse.json();
-        
+
         setGoogleUser({
+          sub: userInfo.id,
           email: userInfo.email,
           name: userInfo.name,
           picture: userInfo.picture,
           accessToken: tokenResponse.access_token,
         });
+
+        // Upsert the user profile in our DB. Fire-and-forget — login succeeds
+        // regardless of backend reachability.
+        upsertProfile(tokenResponse.access_token);
       } catch (error) {
         console.error('Error fetching user info:', error);
       }
     },
-    scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly',
+    // `drive.file` lets the app create files and update files it has previously
+    // created — the only Drive interaction we still need ("Upload to Google
+    // Maps"). We dropped `drive.readonly` once Mongo became the source for
+    // saved trips, so the consent screen asks for less.
+    scope: 'https://www.googleapis.com/auth/drive.file',
   });
 
   const logout = () => setGoogleUser(null);

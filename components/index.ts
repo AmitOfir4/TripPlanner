@@ -1,6 +1,7 @@
 export { Header } from './Header';
-export { ImportModal } from './ImportModal';
 export { UploadModal } from './UploadModal';
+export { SaveTripModal } from './SaveTripModal';
+export { MyTripsModal } from './MyTripsModal';
 export { KmlIconSelector } from './KmlIconSelector';
 export { MapView } from './MapView';
 export { ChatInterface } from './ChatInterface';
