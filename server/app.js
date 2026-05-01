@@ -120,7 +120,7 @@ async function cachedFindPlace(sql, placeName, apiKey, cityCenter, city) {
       SELECT lat, lng, formatted_address, place_name, place_id, rating
       FROM geocode_cache
       WHERE query_key = ${key}
-        AND created_at > NOW() - INTERVAL '365 days'
+        AND created_at > NOW() - INTERVAL '1825 days'
       LIMIT 1
     `;
     if (cached.length > 0) {
@@ -595,32 +595,46 @@ app.post('/api/chat', rateLimit('chat'), async (req, res) => {
 
 CRITICAL FORMAT RULE:
 Every time you mention a specific place (restaurant, cafe, attraction, hotel, shop, park, beach, bar, museum, etc.), you MUST wrap it in this exact tag:
-[PLACE: Place Name | Category | Description (1-2 sentences) | lat,lng | rating]
+[PLACE: Place Name | Category | Description (1-2 sentences) | lat,lng | rating | City]
 
 - lat,lng (REQUIRED): real GPS coordinates in decimal degrees, e.g. 25.2048,55.2708. Never omit.
 - rating (OPTIONAL): the typical Google Maps rating you've seen for this place, as a single decimal between 1.0 and 5.0 (e.g. 4.5). Only include when you are confident — well-known landmarks, popular restaurants, established hotels. OMIT the entire "| rating" segment when you're not confident; never invent ratings for obscure or hypothetical places.
+- City (REQUIRED): the specific town or city the place is located in, in official English (e.g. "Positano", "Napoli", "Bari", "Paris"). This MUST be a town or city — NEVER a region, province, country, or coast (no "Amalfi Coast", "Puglia", "Tuscany", "Italy", "French Riviera"). For a multi-region trip the City varies per place. If you genuinely don't know the city, omit the entire "| City" segment rather than guessing a region.
+- Field order is fixed. If you omit rating but include City, you MUST still output an empty rating slot: "| | City". Never reorder fields.
 
 Never write a place name without the [PLACE:] tag — the app uses these tags to let users save places to their map.
 
-CITY TAG (REQUIRED when the response is about a single city):
-At the very start of your response, output one [CITY_EN: City Name In English] tag using the official English name. Examples: [CITY_EN: Dubai], [CITY_EN: Paris], [CITY_EN: Tokyo], [CITY_EN: New York City]. Do this even when the user asked in another language (Hebrew, Spanish, etc.). The tag is critical — it lets the app cache lookups consistently across languages. Omit only for multi-city or non-city responses.
+CITY TAG (only when the response is about a single city):
+If the entire response is about one city, output one [CITY_EN: City Name In English] tag at the very start using the official English name. Examples: [CITY_EN: Dubai], [CITY_EN: Paris], [CITY_EN: Tokyo]. Do this even when the user asked in another language. OMIT this tag entirely for multi-city or multi-region trips (e.g. "southern Italy", "the Amalfi Coast and Naples", "a road trip across Provence") — in that case the per-place City field in each [PLACE:] tag is the source of truth.
 
 Categories: Landmark, Restaurant, Shopping, Hotel, Nature, Entertainment, Museum, Beach, Nightlife, Adventure, Culture, Cafe, Ice Cream, Dessert
 
 EXAMPLES:
 
 User: "give me good ice cream in Dubai"
+[CITY_EN: Dubai]
 Dubai has a great ice cream scene, from artisanal gelato to local favourites.
 
-[PLACE: Mirzam Chocolate & Sweets | Dessert | Award-winning bean-to-bar chocolatier offering creative ice cream flavours in a beautiful space. | 25.1855,55.2530 | 4.6]
-[PLACE: Salt | Ice Cream | Iconic Dubai street-food brand famous for its salted caramel soft serve and inventive seasonal flavours. | 25.1935,55.2792 | 4.5]
+[PLACE: Mirzam Chocolate & Sweets | Dessert | Award-winning bean-to-bar chocolatier offering creative ice cream flavours in a beautiful space. | 25.1855,55.2530 | 4.6 | Dubai]
+[PLACE: Salt | Ice Cream | Iconic Dubai street-food brand famous for its salted caramel soft serve and inventive seasonal flavours. | 25.1935,55.2792 | 4.5 | Dubai]
 
 User: "cheap but good restaurants in Paris"
+[CITY_EN: Paris]
 Paris has excellent affordable dining well beyond tourist spots. Here are the best value picks.
 
 Budget Bistros:
-[PLACE: Bouillon Chartier | Restaurant | Historic Parisian bouillon serving classic French dishes since 1896 at incredibly low prices. | 48.8729,2.3481 | 4.0]
-[PLACE: Le Relais de la Butte | Restaurant | Unpretentious Montmartre neighbourhood bistro with generous portions and wines by the carafe. | 48.8864,2.3428 | 4.4]
+[PLACE: Bouillon Chartier | Restaurant | Historic Parisian bouillon serving classic French dishes since 1896 at incredibly low prices. | 48.8729,2.3481 | 4.0 | Paris]
+[PLACE: Le Relais de la Butte | Restaurant | Unpretentious Montmartre neighbourhood bistro with generous portions and wines by the carafe. | 48.8864,2.3428 | 4.4 | Paris]
+
+User: "trip across southern Italy: Amalfi Coast, Naples and Puglia"
+(no [CITY_EN:] tag — this is a multi-region trip; each place carries its own City)
+Southern Italy is a feast — dramatic coastlines, world-class pizza, and the trulli of Puglia. Here's a mix across all three regions.
+
+[PLACE: Gino Sorbillo | Restaurant | Iconic Naples pizzeria run by a third-generation pizzaiolo, famous for its airy, perfectly charred Margherita. | 40.8506,14.2563 | 4.4 | Napoli]
+[PLACE: Da Adolfo | Restaurant | Beachside seafood institution reachable only by boat, beloved for grilled mozzarella on lemon leaves. | 40.6280,14.5550 | 4.5 | Positano]
+[PLACE: Trulli of Alberobello | Landmark | UNESCO-listed cluster of conical-roofed limestone houses unique to Puglia's Itria valley. | 40.7833,17.2350 | 4.7 | Alberobello]
+[PLACE: Pompeii Archaeological Park | Landmark | Vast Roman city frozen by Vesuvius in 79 AD, with intact streets, frescoes and amphitheatre. | 40.7497,14.4869 | 4.7 | Pompei]
+[PLACE: Lungomare di Bari | Nature | Long seafront promenade in Puglia's capital, lined with palm trees and old fishing boats. | 41.1267,16.8688 | 4.6 | Bari]
 
 HOW TO RESPOND (choose based on what the user is asking):
 
@@ -687,15 +701,36 @@ RULES (apply to all responses):
 
     // ── Parse structured data from completed response ───────────────────
     const dayRegex = /\[DAY:\s*([^\]]+)\]/g;
-    // Groups: 1=name, 2=category, 3=description, 4=lat,lng (optional), 5=rating (optional).
-    const placeRegex = /\[PLACE:\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|\]]+?)\s*(?:\|\s*([-\d.]+\s*,\s*[-\d.]+))?\s*(?:\|\s*([\d.]+))?\s*\]/g;
+    // Groups: 1=name, 2=category, 3=description, 4=lat,lng (optional),
+    //         5=rating (optional), 6=city (optional, per-place).
+    const placeRegex = /\[PLACE:\s*([^|]+)\s*\|\s*([^|]+)\s*\|\s*([^|\]]+?)\s*(?:\|\s*([-\d.]+\s*,\s*[-\d.]+)?)?\s*(?:\|\s*([\d.]+)?)?\s*(?:\|\s*([^|\]]+?))?\s*\]/g;
 
-    // [CITY_EN:] is Gemini's authoritative English city name — used as the
-    // canonical city for every place in this response so cache keys are
-    // language-agnostic (Hebrew/Arabic queries hit the same row as English).
+    // Per-place City field inside [PLACE:] is the only source for place.city —
+    // for multi-region trips each place resolves to its own town (Positano,
+    // Napoli, Bari). [CITY_EN:] is parsed only to set the UI's currentCity on
+    // single-city responses; it is NOT used as a per-place fallback (which
+    // would re-introduce the "amalfi coast" cache-key bug).
     const cityEnMatch = fullText.match(/\[CITY_EN:\s*([^\]]+)\]/);
     const englishCity = cityEnMatch ? cityEnMatch[1].trim() : null;
-    const cityForPlaces = englishCity || resolvedCity || undefined;
+
+    // Reject region/country labels that occasionally slip into the per-place
+    // City field — these would poison the cache key (e.g. "gino sorbillo, amalfi coast")
+    // and bias the Places query away from a real city. Lowercase exact match.
+    const REGION_BLOCKLIST = new Set([
+      'amalfi coast', 'french riviera', 'cote d\'azur', 'côte d\'azur',
+      'puglia', 'apulia', 'tuscany', 'toscana', 'sicily', 'sicilia',
+      'sardinia', 'sardegna', 'provence', 'andalusia', 'catalonia',
+      'bavaria', 'tyrol', 'algarve', 'cotswolds', 'lake district',
+      'italy', 'france', 'spain', 'germany', 'portugal', 'greece',
+      'usa', 'uk', 'japan', 'thailand',
+    ]);
+    const sanitizePerPlaceCity = (raw) => {
+      if (!raw) return undefined;
+      const trimmed = raw.trim();
+      if (!trimmed) return undefined;
+      if (REGION_BLOCKLIST.has(trimmed.toLowerCase())) return undefined;
+      return trimmed;
+    };
 
     const parseCoords = (raw) => {
       if (!raw) return null;
@@ -737,7 +772,7 @@ RULES (apply to all responses):
             title: placeMatch[1].trim(),
             category: placeMatch[2].trim(),
             description: placeMatch[3].trim(),
-            city: cityForPlaces,
+            city: sanitizePerPlaceCity(placeMatch[6]),
             rating: parseRating(placeMatch[5]),
             _geminiLat: geminiCoords ? geminiCoords.lat : undefined,
             _geminiLng: geminiCoords ? geminiCoords.lng : undefined,
@@ -755,7 +790,7 @@ RULES (apply to all responses):
           title: match[1].trim(),
           category: match[2].trim(),
           description: match[3].trim(),
-          city: cityForPlaces,
+          city: sanitizePerPlaceCity(match[6]),
           rating: parseRating(match[5]),
           _geminiLat: geminiCoords ? geminiCoords.lat : undefined,
           _geminiLng: geminiCoords ? geminiCoords.lng : undefined,
@@ -879,7 +914,7 @@ app.post('/api/geocode', rateLimit('geocode'), async (req, res) => {
       SELECT lat, lng, formatted_address, place_name
       FROM geocode_cache
       WHERE query_key = ${revKey}
-        AND created_at > NOW() - INTERVAL '365 days'
+        AND created_at > NOW() - INTERVAL '1825 days'
       LIMIT 1
     `;
     if (cached.length > 0) {
