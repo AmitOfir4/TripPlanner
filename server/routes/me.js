@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireUser } from '../../api/_auth.js';
 import { upsertUser } from '../../api/_users.js';
+import { enforceRateLimit, LIMITS } from '../../api/_security.js';
 
 const meRouter = Router();
 
@@ -8,6 +9,7 @@ const meRouter = Router();
 meRouter.post('/', async (req, res) => {
   const auth = await requireUser(req, res);
   if (!auth) return;
+  if (!enforceRateLimit(res, `sub:${auth.sub}:me`, LIMITS.me)) return;
   try {
     const user = await upsertUser({
       sub: auth.sub,

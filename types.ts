@@ -50,6 +50,14 @@ export interface SavedTripSummary {
   updatedAt: string;
 }
 
+/** Response shape for GET /api/trips. Keyset paginated by `updatedAt`. */
+export interface SavedTripsPage {
+  trips: SavedTripSummary[];
+  /** ISO-8601 `updatedAt` of the last trip in this page. Pass back as `before`
+   *  to fetch the next page. `null` when there are no more pages. */
+  nextCursor: string | null;
+}
+
 /** Full trip document returned by GET /api/trips/:id. */
 export interface SavedTripDoc extends SavedTripSummary {
   ownerSub: string;

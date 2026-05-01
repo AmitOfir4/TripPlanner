@@ -58,7 +58,12 @@ export function getClientIp(req) {
   return req.ip || req.socket?.remoteAddress || 'unknown';
 }
 
-// Default per-endpoint limits per IP per minute. Tune via env if needed.
+// Default per-endpoint limits per minute. Tune via env if needed.
+//
+// Routes under `/api/search`, `/api/enrich`, `/api/chat`, `/api/geocode`,
+// `/api/import-mymap` are unauthenticated and limited per-IP. The new
+// `me` / `trips:*` buckets are limited per Google `sub` (after requireUser),
+// since a single user behind a NAT shouldn't be punished for a noisy neighbour.
 const num = (v, d) => (Number.isFinite(+v) && +v > 0 ? +v : d);
 export const LIMITS = {
   search:         { max: num(process.env.RATE_LIMIT_SEARCH,         30), windowMs: 60_000 },
@@ -66,7 +71,27 @@ export const LIMITS = {
   chat:           { max: num(process.env.RATE_LIMIT_CHAT,           20), windowMs: 60_000 },
   geocode:        { max: num(process.env.RATE_LIMIT_GEOCODE,        60), windowMs: 60_000 },
   'import-mymap': { max: num(process.env.RATE_LIMIT_IMPORT_MYMAP,   20), windowMs: 60_000 },
+  me:             { max: num(process.env.RATE_LIMIT_ME,             20), windowMs: 60_000 },
+  'trips:read':   { max: num(process.env.RATE_LIMIT_TRIPS_READ,    120), windowMs: 60_000 },
+  'trips:write':  { max: num(process.env.RATE_LIMIT_TRIPS_WRITE,   30),  windowMs: 60_000 },
 };
+
+/**
+ * Run a rate-limit check and emit a 429 with `Retry-After` if exceeded.
+ * Returns true when the caller should proceed, false when a 429 was sent
+ * (caller must `return` immediately on false). Mirrors the requireUser shape.
+ */
+export function enforceRateLimit(res, key, cfg) {
+  const { allowed, retryAfter } = checkRateLimit(key, cfg.max, cfg.windowMs);
+  if (allowed) return true;
+  res.setHeader('Retry-After', String(retryAfter));
+  res.status(429).json({
+    error: 'Too many requests',
+    message: `Rate limit exceeded. Try again in ${retryAfter}s.`,
+    retryAfter,
+  });
+  return false;
+}
 
 // ── Safe error responses ─────────────────────────────────────────────────────
 // Classify common Gemini SDK errors into user-actionable messages. Returns

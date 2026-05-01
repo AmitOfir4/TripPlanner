@@ -1,11 +1,17 @@
 import { Router } from 'express';
 import { requireUser } from '../../api/_auth.js';
+import { enforceRateLimit, LIMITS } from '../../api/_security.js';
 import {
   listTrips, getTrip, createTrip, updateTrip, deleteTrip,
   setDriveFileId, ensureTripIndexes,
 } from '../../api/_trips.js';
 
 const tripsRouter = Router();
+
+// Per-sub rate limits. Reads are cheap (Mongo projected list / single doc), so
+// the bucket is generous; writes hit normalize + insert/update and have a tighter cap.
+const readKey  = (sub) => `sub:${sub}:trips:read`;
+const writeKey = (sub) => `sub:${sub}:trips:write`;
 
 // Indexes are created once per process, on the first request that needs them.
 let tripIndexesPromise = null;
@@ -19,14 +25,18 @@ function ensureTripIndexesOnce() {
   return tripIndexesPromise;
 }
 
-// GET /api/trips — list current user's trips
+// GET /api/trips — list current user's trips, keyset-paginated by updatedAt.
+// Query params: ?limit=<1-100, default 50>&before=<ISO updatedAt cursor>
 tripsRouter.get('/', async (req, res) => {
   const auth = await requireUser(req, res);
   if (!auth) return;
+  if (!enforceRateLimit(res, readKey(auth.sub), LIMITS['trips:read'])) return;
   try {
     await ensureTripIndexesOnce();
-    const trips = await listTrips(auth.sub);
-    res.json({ trips });
+    const limit = req.query.limit != null ? Number(req.query.limit) : undefined;
+    const before = typeof req.query.before === 'string' ? req.query.before : undefined;
+    const { trips, nextCursor } = await listTrips(auth.sub, { limit, before });
+    res.json({ trips, nextCursor });
   } catch (err) {
     console.error('[GET /api/trips] error:', err);
     res.status(500).json({ error: 'server_error', message: 'Failed to list trips' });
@@ -37,6 +47,7 @@ tripsRouter.get('/', async (req, res) => {
 tripsRouter.post('/', async (req, res) => {
   const auth = await requireUser(req, res);
   if (!auth) return;
+  if (!enforceRateLimit(res, writeKey(auth.sub), LIMITS['trips:write'])) return;
   try {
     const result = await createTrip(auth.sub, req.body);
     if (!result.ok) return res.status(result.status).json({ error: result.error });
@@ -51,6 +62,7 @@ tripsRouter.post('/', async (req, res) => {
 tripsRouter.get('/:id', async (req, res) => {
   const auth = await requireUser(req, res);
   if (!auth) return;
+  if (!enforceRateLimit(res, readKey(auth.sub), LIMITS['trips:read'])) return;
   try {
     const trip = await getTrip(auth.sub, req.params.id);
     if (!trip) return res.status(404).json({ error: 'Trip not found' });
@@ -65,6 +77,7 @@ tripsRouter.get('/:id', async (req, res) => {
 tripsRouter.put('/:id', async (req, res) => {
   const auth = await requireUser(req, res);
   if (!auth) return;
+  if (!enforceRateLimit(res, writeKey(auth.sub), LIMITS['trips:write'])) return;
   try {
     const result = await updateTrip(auth.sub, req.params.id, req.body);
     if (!result.ok) return res.status(result.status).json({ error: result.error });
@@ -79,6 +92,7 @@ tripsRouter.put('/:id', async (req, res) => {
 tripsRouter.delete('/:id', async (req, res) => {
   const auth = await requireUser(req, res);
   if (!auth) return;
+  if (!enforceRateLimit(res, writeKey(auth.sub), LIMITS['trips:write'])) return;
   try {
     const result = await deleteTrip(auth.sub, req.params.id);
     if (!result.ok) return res.status(result.status).json({ error: result.error });
@@ -93,6 +107,7 @@ tripsRouter.delete('/:id', async (req, res) => {
 tripsRouter.patch('/:id/drive-link', async (req, res) => {
   const auth = await requireUser(req, res);
   if (!auth) return;
+  if (!enforceRateLimit(res, writeKey(auth.sub), LIMITS['trips:write'])) return;
   try {
     const result = await setDriveFileId(auth.sub, req.params.id, req.body?.driveFileId);
     if (!result.ok) return res.status(result.status).json({ error: result.error });

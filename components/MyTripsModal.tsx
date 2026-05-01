@@ -11,10 +11,15 @@ interface MyTripsModalProps {
   loadingTripId: string | null;
   errorMessage?: string | null;
   importingFile: boolean;
+  /** When non-null there are more pages to fetch via onLoadMore. */
+  hasMore: boolean;
+  /** True while a "load more" page request is in flight. */
+  loadingMore: boolean;
   onClose: () => void;
   onSelectTrip: (id: string) => void;
   onDeleteTrip: (id: string) => void;
   onFileUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onLoadMore: () => void;
 }
 
 function formatUpdatedAt(iso: string): string {
@@ -25,7 +30,8 @@ function formatUpdatedAt(iso: string): string {
 
 export const MyTripsModal: React.FC<MyTripsModalProps> = ({
   show, loading, trips, loadingTripId, errorMessage, importingFile,
-  onClose, onSelectTrip, onDeleteTrip, onFileUpload,
+  hasMore, loadingMore,
+  onClose, onSelectTrip, onDeleteTrip, onFileUpload, onLoadMore,
 }) => {
   if (!show) return null;
 
@@ -86,6 +92,19 @@ export const MyTripsModal: React.FC<MyTripsModalProps> = ({
                 </div>
               );
             })}
+
+            {hasMore && (
+              <div className={s.loadMoreWrap}>
+                <button
+                  onClick={onLoadMore}
+                  disabled={loadingMore || loadingTripId !== null}
+                  className={s.loadMoreBtn}
+                >
+                  {loadingMore && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {loadingMore ? 'Loading…' : 'Load more'}
+                </button>
+              </div>
+            )}
           </div>
         )}
 

@@ -116,6 +116,8 @@ const App: React.FC = () => {
   const [showMyTripsModal, setShowMyTripsModal] = useState(false);
   const [loadingTrips, setLoadingTrips] = useState(false);
   const [myTrips, setMyTrips] = useState<SavedTripSummary[]>([]);
+  const [myTripsCursor, setMyTripsCursor] = useState<string | null>(null);
+  const [loadingMoreTrips, setLoadingMoreTrips] = useState(false);
   const [loadingTripId, setLoadingTripId] = useState<string | null>(null);
   const [myTripsError, setMyTripsError] = useState<string | null>(null);
 
@@ -125,12 +127,28 @@ const App: React.FC = () => {
     setMyTripsError(null);
     setLoadingTrips(true);
     try {
-      const trips = await listSavedTrips(googleUser.accessToken);
-      setMyTrips(trips);
+      const page = await listSavedTrips(googleUser.accessToken);
+      setMyTrips(page.trips);
+      setMyTripsCursor(page.nextCursor);
     } catch (err) {
       setMyTripsError(err instanceof Error ? err.message : 'Failed to load trips');
     } finally {
       setLoadingTrips(false);
+    }
+  };
+
+  const handleLoadMoreTrips = async () => {
+    if (!googleUser || !myTripsCursor || loadingMoreTrips) return;
+    setLoadingMoreTrips(true);
+    setMyTripsError(null);
+    try {
+      const page = await listSavedTrips(googleUser.accessToken, { before: myTripsCursor });
+      setMyTrips(prev => [...prev, ...page.trips]);
+      setMyTripsCursor(page.nextCursor);
+    } catch (err) {
+      setMyTripsError(err instanceof Error ? err.message : 'Failed to load more trips');
+    } finally {
+      setLoadingMoreTrips(false);
     }
   };
 
@@ -343,10 +361,13 @@ const App: React.FC = () => {
         loadingTripId={loadingTripId}
         errorMessage={myTripsError}
         importingFile={importingMap}
+        hasMore={myTripsCursor !== null}
+        loadingMore={loadingMoreTrips}
         onClose={() => { if (loadingTripId === null) setShowMyTripsModal(false); }}
         onSelectTrip={handleSelectTrip}
         onDeleteTrip={handleDeleteTrip}
         onFileUpload={handleKMLFileUpload}
+        onLoadMore={handleLoadMoreTrips}
       />
 
       <UploadModal

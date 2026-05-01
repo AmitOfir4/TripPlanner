@@ -92,21 +92,61 @@ function normalizeTripInput(body) {
 
 // ── Reads ───────────────────────────────────────────────────────────────
 
-/** Lightweight projection for the trip-list view. */
-export async function listTrips(ownerSub) {
+const DEFAULT_LIST_LIMIT = 50;
+const MAX_LIST_LIMIT = 100;
+
+/**
+ * Lightweight projection for the trip-list view, keyset-paginated by `updatedAt`.
+ *
+ * Cursor: we use `updatedAt` alone (not the strictly-correct `(updatedAt, _id)`
+ * compound). Ties on `updatedAt` are essentially impossible for per-user trip
+ * lists at millisecond resolution, so the simpler cursor is fine. Upgrade path
+ * if it ever matters: `{ $or: [{ updatedAt: { $lt: c.t } }, { updatedAt: c.t,
+ * _id: { $lt: c.id } }] }` plus an `_id` tiebreak in the sort.
+ *
+ * Backed by the `{ ownerSub: 1, updatedAt: -1 }` index from `ensureTripIndexes`.
+ */
+export async function listTrips(ownerSub, { limit, before } = {}) {
+  const safeLimit = Math.min(
+    MAX_LIST_LIMIT,
+    Math.max(1, Number.isFinite(limit) ? Math.floor(limit) : DEFAULT_LIST_LIMIT),
+  );
+
+  // Forgiving cursor parse: invalid `before` falls back to no cursor (page 1)
+  // rather than 400, so a stale or mangled query string never breaks the list.
+  let beforeDate = null;
+  if (before != null) {
+    const d = new Date(before);
+    if (!Number.isNaN(d.getTime())) beforeDate = d;
+  }
+
+  const filter = { ownerSub };
+  if (beforeDate) filter.updatedAt = { $lt: beforeDate };
+
   const col = await tripsCollection();
   const docs = await col
-    .find({ ownerSub }, { projection: { title: 1, city: 1, updatedAt: 1, createdAt: 1 } })
+    .find(filter, { projection: { title: 1, city: 1, updatedAt: 1, createdAt: 1 } })
     .sort({ updatedAt: -1 })
-    .limit(200)
+    .limit(safeLimit)
     .toArray();
-  return docs.map(d => ({
+
+  const trips = docs.map(d => ({
     id: String(d._id),
     title: d.title,
     city: d.city,
     updatedAt: d.updatedAt,
     createdAt: d.createdAt,
   }));
+
+  // Only emit a cursor when the page is full — a partial page means we've
+  // reached the end and the client should stop asking for more.
+  const nextCursor = trips.length === safeLimit
+    ? (trips[trips.length - 1].updatedAt instanceof Date
+        ? trips[trips.length - 1].updatedAt.toISOString()
+        : String(trips[trips.length - 1].updatedAt))
+    : null;
+
+  return { trips, nextCursor };
 }
 
 /** Full trip doc, or null if not found / not owned by this user. */
