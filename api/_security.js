@@ -13,15 +13,46 @@ export const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || DEFAULT_DEV_ORIGI
 const ALLOW_METHODS = 'GET,OPTIONS,POST,PUT,PATCH,DELETE';
 const ALLOW_HEADERS = 'Content-Type, X-Requested-With, Authorization';
 
-// For the Express `cors()` middleware.
-export const expressCorsOptions = {
-  origin: (origin, cb) => {
-    if (!origin || ALLOWED_ORIGINS.includes(origin)) cb(null, true);
-    else cb(new Error('Not allowed by CORS'));
-  },
+const STATIC_CORS_OPTS = {
   methods: ALLOW_METHODS.split(','),
   allowedHeaders: ALLOW_HEADERS.split(',').map(s => s.trim()),
 };
+
+/**
+ * Per-request CORS delegate for Express `cors()`.
+ *
+ * Allow rules, in order:
+ * 1. No `Origin` header → non-browser caller (curl, server-to-server) → allow.
+ * 2. Origin matches `ALLOWED_ORIGINS` env var → allow.
+ * 3. Origin matches the request's own Host (same-origin POST/PUT/etc) → allow.
+ *    Browsers send `Origin` on non-GET requests even when it matches the host,
+ *    so without this check Vercel production traffic gets 403'd unless every
+ *    deploy URL is enumerated in env config.
+ * 4. Otherwise reject.
+ *
+ * `app.set('trust proxy', true)` (already set in server/app.js) makes
+ * `req.headers['x-forwarded-host']` and `req.headers.host` reliable behind Vercel.
+ */
+export function expressCorsDelegate(req, cb) {
+  const origin = req.headers.origin;
+
+  // 1. Non-browser callers.
+  if (!origin) return cb(null, { origin: true, ...STATIC_CORS_OPTS });
+
+  // 2. Explicit allow-list.
+  if (ALLOWED_ORIGINS.includes(origin)) {
+    return cb(null, { origin: true, ...STATIC_CORS_OPTS });
+  }
+
+  // 3. Same-origin: Origin header matches the request's own host.
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  if (host && (origin === `https://${host}` || origin === `http://${host}`)) {
+    return cb(null, { origin: true, ...STATIC_CORS_OPTS });
+  }
+
+  // 4. Reject — surfaced as a 403 by the error handler in server/app.js.
+  cb(new Error('Not allowed by CORS'));
+}
 
 // ── Rate limiting ────────────────────────────────────────────────────────────
 // In-memory sliding window. On Vercel each Lambda instance has its own Map,

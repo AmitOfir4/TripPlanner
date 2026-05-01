@@ -13,7 +13,7 @@ import { neon } from '@neondatabase/serverless';
 dotenv.config();
 
 import {
-  expressCorsOptions, checkRateLimit, getClientIp, LIMITS,
+  expressCorsDelegate, checkRateLimit, getClientIp, LIMITS,
   safeError, truncate, CHAT_LIMITS,
 } from '../api/_security.js';
 import meRouter from './routes/me.js';
@@ -155,7 +155,7 @@ const app = express();
 
 // Middleware
 app.set('trust proxy', true);
-app.use(cors(expressCorsOptions));
+app.use(cors(expressCorsDelegate));
 // Trip writes can carry many places; everything else stays well under 100kb.
 // Per-field caps in api/_trips.js bound the actual document size after parsing.
 app.use(express.json({ limit: '1mb' }));
