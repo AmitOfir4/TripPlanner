@@ -66,17 +66,31 @@ export const MapView: React.FC<MapViewProps> = ({
     const placesNeedingGeocoding = savedLayers.flatMap((layer) =>
       layer.places.filter((p) => !p.lat || !p.lng).map((p) => ({ place: p, layerCity: layer.name }))
     );
-    if (placesNeedingGeocoding.length === 0) return;
+    const toGeocode = placesNeedingGeocoding.filter(({ place }) =>
+      !geocodingInFlightRef.current.has(place.title) && !geocodedSavedPlaces[place.title]
+    );
+    if (toGeocode.length === 0) return;
 
-    placesNeedingGeocoding.forEach(({ place, layerCity }) => {
-      if (geocodingInFlightRef.current.has(place.title)) return;
-      geocodingInFlightRef.current.add(place.title);
-      const geocodeCity = place.city || layerCity || city;
-      geocodeAddress(place.title, geocodeCity, undefined, place.country).then((result) => {
-        if (result) setGeocodedSavedPlaces((prev) => ({ ...prev, [place.title]: { lat: result.lat, lng: result.lng } }));
-      });
-    });
-  }, [savedLayers, city]);
+    toGeocode.forEach(({ place }) => geocodingInFlightRef.current.add(place.title));
+
+    // Cap concurrent geocodes so a 40-place trip doesn't burst all requests at
+    // once on first mount. Workers pull jobs from a shared cursor.
+    const CONCURRENCY = 4;
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < toGeocode.length) {
+        const { place, layerCity } = toGeocode[cursor++];
+        const geocodeCity = place.city || layerCity || city;
+        try {
+          const result = await geocodeAddress(place.title, geocodeCity, undefined, place.country);
+          if (result) setGeocodedSavedPlaces((prev) => ({ ...prev, [place.title]: { lat: result.lat, lng: result.lng } }));
+        } finally {
+          geocodingInFlightRef.current.delete(place.title);
+        }
+      }
+    };
+    for (let i = 0; i < Math.min(CONCURRENCY, toGeocode.length); i++) worker();
+  }, [savedLayers, city, geocodedSavedPlaces]);
 
   const placesWithCoords = places.filter((p) => p.lat && p.lng);
   const savedPlaces = savedLayers.flatMap((layer) => layer.places);

@@ -57,26 +57,31 @@ export const useGoogleAuth = () => {
 
   // Validate token on mount if user is cached
   useEffect(() => {
+    let cancelled = false;
+    // Snapshot the token we're validating so a fast logout/re-login doesn't get
+    // wiped by a late-returning failure for an older token.
+    const tokenAtMount = googleUser?.accessToken;
+    if (!tokenAtMount) return;
+
     const validateToken = async () => {
-      if (!googleUser) return;
-
       try {
-        // Test the token by making a simple API call
         const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-          headers: { Authorization: `Bearer ${googleUser.accessToken}` },
+          headers: { Authorization: `Bearer ${tokenAtMount}` },
         });
-
+        if (cancelled) return;
         if (!response.ok) {
           console.warn('Cached token is invalid, logging out...');
-          setGoogleUser(null);
+          setGoogleUser((curr) => (curr?.accessToken === tokenAtMount ? null : curr));
         }
       } catch (error) {
+        if (cancelled) return;
         console.error('Error validating token:', error);
-        setGoogleUser(null);
+        setGoogleUser((curr) => (curr?.accessToken === tokenAtMount ? null : curr));
       }
     };
 
     validateToken();
+    return () => { cancelled = true; };
   }, []); // Only run on mount
 
   const login = useGoogleLogin({
