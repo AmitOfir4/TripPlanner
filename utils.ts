@@ -60,11 +60,11 @@ export const generateKml = (data: TripData): string => {
         ? `<Point><coordinates>${place.lng},${place.lat},0</coordinates></Point>`
         : '';
 
-      // ExtendedData is the only field Google My Maps reliably preserves
-      // verbatim across a round-trip. We stash IconId here so re-import can
-      // restore the original icon even when Google rewrites styleUrl/icon hrefs.
+      // Icon is encoded via <styleUrl> + the <Style> blocks in the KML header,
+      // so Google My Maps shows the right pin without us also surfacing an
+      // "IconId" row in its info window. The kmlParser still recovers the
+      // icon on re-import by resolving the styleUrl back to a known icon id.
       const extendedDataEntries = [
-        `<Data name="IconId"><value>${escapeXml(styleId)}</value></Data>`,
         place.mapUrl ? `<Data name="GoogleMapsURL"><value>${escapeXml(place.mapUrl)}</value></Data>` : '',
       ].filter(Boolean).join('');
 

@@ -16,8 +16,6 @@ interface KmlStyleMap {
   '@_id'?: string;
   Pair?: KmlStyleMapPair | KmlStyleMapPair[];
 }
-interface KmlExtendedDataItem { '@_name'?: string; value?: string }
-interface KmlExtendedData { Data?: KmlExtendedDataItem | KmlExtendedDataItem[] }
 interface KmlPoint { coordinates?: string | number }
 interface KmlPlacemark {
   name?: string;
@@ -25,7 +23,6 @@ interface KmlPlacemark {
   styleUrl?: string;
   Style?: KmlStyle;
   Point?: KmlPoint;
-  ExtendedData?: KmlExtendedData;
 }
 interface KmlFolder {
   name?: string;
@@ -112,19 +109,6 @@ const URL_TO_ICON_ID: Record<string, string> = (() => {
   return map;
 })();
 
-// Set of every icon id the app knows about. Used to validate the IconId we
-// stash in <ExtendedData> on export, so a stale or tampered KML can't inject
-// an unknown id into a place.
-const KNOWN_ICON_IDS: ReadonlySet<string> = new Set(AVAILABLE_KML_ICONS.map(i => i.id));
-
-/** Extracts a <Data name="..."> value from a placemark's <ExtendedData>, or null. */
-function getExtendedDataValue(placemark: KmlPlacemark, name: string): string | null {
-  const dataEntries = toArray(placemark.ExtendedData?.Data);
-  const match = dataEntries.find(d => d['@_name'] === name);
-  const value = match?.value;
-  return typeof value === 'string' ? value : null;
-}
-
 /** Resolves a styleUrl (e.g. "#icon-dining" or "icon-1234") to one of our icon IDs, or null. */
 type StyleResolver = (styleUrl: string | undefined) => string | null;
 
@@ -202,14 +186,11 @@ function parseKMLPlacemark(placemark: KmlPlacemark, resolveStyle: StyleResolver)
     }
 
     // Resolve the icon. Priority:
-    //   1) <ExtendedData><Data name="IconId"> — survives Google My Maps round-trip
-    //   2) inline <Style><IconStyle><Icon><href> on the placemark
-    //   3) document-level <styleUrl> reference (Style or StyleMap)
-    const extendedIconId = getExtendedDataValue(placemark, 'IconId');
+    //   1) inline <Style><IconStyle><Icon><href> on the placemark
+    //   2) document-level <styleUrl> reference (Style or StyleMap)
     const inlineHref = placemark.Style?.IconStyle?.Icon?.href;
     const customKmlIcon =
-      (extendedIconId && KNOWN_ICON_IDS.has(extendedIconId) ? extendedIconId : null)
-      || (typeof inlineHref === 'string' ? URL_TO_ICON_ID[inlineHref] : null)
+      (typeof inlineHref === 'string' ? URL_TO_ICON_ID[inlineHref] : null)
       || resolveStyle(placemark.styleUrl)
       || undefined;
 
