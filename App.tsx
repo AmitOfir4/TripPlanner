@@ -39,7 +39,7 @@ const App: React.FC = () => {
 
   const {
     currentCity, setCurrentCity, savedLayers, setSavedLayers,
-    savePlace, resetTrip,
+    savePlace, addLayer, renameLayer, deleteLayer, resetTrip,
     tripId, tripTitle, markSaved, loadSavedTrip,
     tripDriveFileId, setTripDriveFileId,
   } = useTripPlanner(userLocation, apiKey);
@@ -200,14 +200,13 @@ const App: React.FC = () => {
   // ── Place handlers ───────────────────────────────────────────────
 
   const handleRemovePlace = (layerName: string, placeTitle: string) => {
+    // Keep empty layers — the user can delete them explicitly from the sidebar.
     setSavedLayers((prev) =>
-      prev
-        .map((layer) =>
-          layer.name === layerName
-            ? { ...layer, places: layer.places.filter((p) => p.title !== placeTitle) }
-            : layer
-        )
-        .filter((layer) => layer.places.length > 0)
+      prev.map((layer) =>
+        layer.name === layerName
+          ? { ...layer, places: layer.places.filter((p) => p.title !== placeTitle) }
+          : layer
+      )
     );
   };
 
@@ -233,7 +232,8 @@ const App: React.FC = () => {
       if (!srcLayer || !dstLayer) return prev;
       const [moved] = srcLayer.places.splice(fromIndex, 1);
       dstLayer.places.splice(toIndex, 0, moved);
-      return layers.filter((l) => l.places.length > 0);
+      // Preserve empty layers — they may have been intentionally created.
+      return layers;
     });
   };
 
@@ -325,6 +325,9 @@ const App: React.FC = () => {
                   onRemovePlace={handleRemovePlaceFromMap}
                   onUpdatePlace={handleUpdatePlaceFromMap}
                   onReorderPlace={handleReorderPlace}
+                  onAddLayer={addLayer}
+                  onRenameLayer={renameLayer}
+                  onDeleteLayer={deleteLayer}
                 />
               </div>
             </div>

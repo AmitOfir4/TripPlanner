@@ -6,7 +6,15 @@ interface UseTripPlannerReturn {
   setCurrentCity: (city: string) => void;
   savedLayers: TripLayer[];
   setSavedLayers: React.Dispatch<React.SetStateAction<TripLayer[]>>;
-  savePlace: (place: TripRecommendation) => void;
+  savePlace: (place: TripRecommendation, targetLayerName?: string) => void;
+  /** Create a new empty layer. Returns true if added, false if a layer with
+   *  the same (case-insensitive) name already exists. */
+  addLayer: (name: string) => boolean;
+  /** Rename an existing layer. No-op if `from` doesn't exist or `to`
+   *  collides with another layer (case-insensitive). */
+  renameLayer: (from: string, to: string) => boolean;
+  /** Remove a layer and all its places. */
+  deleteLayer: (name: string) => void;
   resetTrip: () => void;
   /** Mongo `_id` of the trip currently loaded into state, or null if unsaved. */
   tripId: string | null;
@@ -41,10 +49,11 @@ export const useTripPlanner = (
     setSavedLayersState(value);
   };
 
-  const savePlace = (place: TripRecommendation) => {
-    // Use the place's own city (set by chat when asking about a different city)
-    // so it lands in the correct layer, not always in the session city layer.
-    const layerName = place.city || currentCity;
+  const savePlace = (place: TripRecommendation, targetLayerName?: string) => {
+    // Explicit target layer wins (user picked one in the sidebar / map UI).
+    // Otherwise use the place's own city (set by chat when asking about a
+    // different city) so it lands in the correct layer.
+    const layerName = targetLayerName || place.city || currentCity;
 
     setSavedLayers(prev => {
       const existingLayerIdx = prev.findIndex(
@@ -66,6 +75,41 @@ export const useTripPlanner = (
 
       return [...prev, { name: layerName, places: [place] }];
     });
+  };
+
+  const addLayer = (name: string): boolean => {
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+    let added = false;
+    setSavedLayersState(prev => {
+      if (prev.some(l => l.name.toLowerCase() === trimmed.toLowerCase())) return prev;
+      added = true;
+      return [...prev, { name: trimmed, places: [] }];
+    });
+    return added;
+  };
+
+  const renameLayer = (from: string, to: string): boolean => {
+    const trimmed = to.trim();
+    if (!trimmed || trimmed === from) return false;
+    let renamed = false;
+    setSavedLayersState(prev => {
+      const fromIdx = prev.findIndex(l => l.name === from);
+      if (fromIdx === -1) return prev;
+      const collides = prev.some(
+        (l, i) => i !== fromIdx && l.name.toLowerCase() === trimmed.toLowerCase()
+      );
+      if (collides) return prev;
+      renamed = true;
+      const next = [...prev];
+      next[fromIdx] = { ...next[fromIdx], name: trimmed };
+      return next;
+    });
+    return renamed;
+  };
+
+  const deleteLayer = (name: string) => {
+    setSavedLayersState(prev => prev.filter(l => l.name !== name));
   };
 
   const resetTrip = () => {
@@ -103,6 +147,9 @@ export const useTripPlanner = (
     savedLayers,
     setSavedLayers,
     savePlace,
+    addLayer,
+    renameLayer,
+    deleteLayer,
     resetTrip,
     tripId,
     tripTitle,

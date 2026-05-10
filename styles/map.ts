@@ -37,9 +37,20 @@ export const mapSidebarStyles = {
   scrollable: 'flex-1 overflow-y-auto',
 
   layerBorder: 'border-b border-slate-100 last:border-b-0',
-  layerBtn: 'w-full flex items-center gap-2 px-4 py-2.5 hover:bg-slate-50 transition-colors text-left',
+  layerRow: 'group flex items-center hover:bg-slate-50 transition-colors',
+  layerBtn: 'flex-1 min-w-0 flex items-center gap-2 px-4 py-2.5 text-left',
   layerName: 'text-xs font-black text-slate-700 truncate flex-1',
   layerCount: 'text-[10px] text-slate-400 flex-shrink-0',
+  layerActionBtn: 'p-1.5 rounded-md text-slate-400 hover:text-teal-600 hover:bg-white opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0',
+  layerDeleteBtn: 'p-1.5 mr-2 rounded-md text-slate-400 hover:text-red-600 hover:bg-white opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0',
+  layerNameInput: 'flex-1 min-w-0 px-2 py-1 text-xs font-black text-slate-900 border border-teal-400 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 mx-2 my-1',
+  newLayerWrap: 'flex-shrink-0 border-t border-slate-200 p-2 bg-slate-50',
+  newLayerBtn: 'w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-teal-700 hover:text-teal-800 bg-white hover:bg-teal-50 border border-dashed border-teal-300 hover:border-teal-400 rounded-lg transition-colors',
+  newLayerInputRow: 'flex items-center gap-1.5',
+  newLayerInput: 'flex-1 min-w-0 px-2 py-1.5 text-xs border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500',
+  newLayerConfirmBtn: 'p-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-md disabled:opacity-50',
+  newLayerCancelBtn: 'p-1.5 text-slate-500 hover:bg-white rounded-md',
+  layerEmpty: 'pl-8 pr-4 py-2 text-[11px] text-slate-400 italic',
 
   placeBtn: (isActive: boolean) =>
     `w-full flex items-center gap-2.5 pl-8 pr-4 py-2 text-left transition-colors ${
@@ -75,4 +86,6 @@ export const mapInfoWindowStyles = {
   clickedCoords: 'text-xs text-slate-600 mb-3',
   clickedAddBtn: 'w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-2',
   clickedMapsLink: 'text-xs text-indigo-600 hover:text-indigo-700 font-bold flex items-center gap-1 justify-center mt-2',
+  clickedLayerSelect: 'w-full px-2 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white',
+  clickedLayerNewInput: 'w-full px-2 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500',
 } as const;

@@ -19,21 +19,27 @@ interface MapViewProps {
   focusedPlace?: TripRecommendation | null;
   userLocation?: { lat: number; lng: number } | null;
   onMarkerClick?: (place: TripRecommendation) => void;
-  onAddPlace?: (place: TripRecommendation) => void;
+  onAddPlace?: (place: TripRecommendation, targetLayerName?: string) => void;
   onRemovePlace?: (place: TripRecommendation) => void;
   onUpdatePlace?: (updated: TripRecommendation) => void;
   onReorderPlace?: (fromLayer: string, fromIndex: number, toLayer: string, toIndex: number) => void;
+  onAddLayer?: (name: string) => boolean;
+  onRenameLayer?: (from: string, to: string) => boolean;
+  onDeleteLayer?: (name: string) => void;
 }
 
 export const MapView: React.FC<MapViewProps> = ({
   city, places, savedLayers = [], focusedPlace, userLocation,
   onMarkerClick, onAddPlace, onRemovePlace, onUpdatePlace, onReorderPlace,
+  onAddLayer, onRenameLayer, onDeleteLayer,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<TripRecommendation | null>(null);
   const [clickedLocation, setClickedLocation] = useState<{ lat: number; lng: number; name?: string } | null>(null);
   const [customPlaceName, setCustomPlaceName] = useState('');
   const [customPlaceIcon, setCustomPlaceIcon] = useState('icon-camera');
+  const [customPlaceLayer, setCustomPlaceLayer] = useState<string>('');
+  const [customPlaceNewLayerName, setCustomPlaceNewLayerName] = useState('');
   const [isEditingName, setIsEditingName] = useState(false);
   const [geocodedFocusedPlace, setGeocodedFocusedPlace] = useState<{ place: TripRecommendation; lat: number; lng: number } | null>(null);
   const [geocodedSavedPlaces, setGeocodedSavedPlaces] = useState<Record<string, { lat: number; lng: number }>>({});
@@ -41,6 +47,8 @@ export const MapView: React.FC<MapViewProps> = ({
   const [editingIconForPlace, setEditingIconForPlace] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const geocodingInFlightRef = useRef<Set<string>>(new Set());
+
+  const NEW_LAYER_OPTION = '__new__';
 
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const defaultCenter = (userLocation && isFinite(userLocation.lat) && isFinite(userLocation.lng))
@@ -120,7 +128,7 @@ export const MapView: React.FC<MapViewProps> = ({
         </div>
 
 
-        {savedLayers.length > 0 && (
+        {(savedLayers.length > 0 || onAddLayer) && (
           <button onClick={() => setIsSidebarOpen((v) => !v)} className={vs.sidebarToggleBtn(isSidebarOpen)} title={isSidebarOpen ? 'Hide trip summary' : 'Show trip summary'}>
             <List className="w-5 h-5" />
           </button>
@@ -132,7 +140,7 @@ export const MapView: React.FC<MapViewProps> = ({
 
       {/* Map Container */}
       <div className={vs.mapWrapper(isExpanded)}>
-        {savedLayers.length > 0 && (
+        {(savedLayers.length > 0 || onAddLayer) && (
           <MapSidebar
             savedLayers={savedLayers}
             isSidebarOpen={isSidebarOpen}
@@ -140,6 +148,9 @@ export const MapView: React.FC<MapViewProps> = ({
             onToggleSidebar={() => setIsSidebarOpen((v) => !v)}
             onSelectPlace={(place) => { setSelectedPlace(place); onMarkerClick?.(place); }}
             onReorderPlace={onReorderPlace}
+            onAddLayer={onAddLayer}
+            onRenameLayer={onRenameLayer}
+            onDeleteLayer={onDeleteLayer}
           />
         )}
 
@@ -160,6 +171,10 @@ export const MapView: React.FC<MapViewProps> = ({
                     setClickedLocation({ lat: e.detail.latLng.lat, lng: e.detail.latLng.lng });
                     setCustomPlaceName('');
                     setCustomPlaceIcon('icon-camera');
+                    // Default to the first existing layer; falls back to "create new"
+                    // if there are no layers yet.
+                    setCustomPlaceLayer(savedLayers[0]?.name || NEW_LAYER_OPTION);
+                    setCustomPlaceNewLayerName('');
                     setIsEditingName(false);
                     setSelectedPlace(null);
                   }
@@ -307,8 +322,35 @@ export const MapView: React.FC<MapViewProps> = ({
                         </div>
                       )}
                       {onAddPlace && (
+                        <div className="mb-3">
+                          <label className={iw.clickedLabel}>Add to Layer</label>
+                          <select
+                            value={customPlaceLayer}
+                            onChange={(e) => setCustomPlaceLayer(e.target.value)}
+                            className={iw.clickedLayerSelect}
+                          >
+                            {savedLayers.map((l) => (
+                              <option key={l.name} value={l.name}>{l.name}</option>
+                            ))}
+                            <option value={NEW_LAYER_OPTION}>+ New layer…</option>
+                          </select>
+                          {customPlaceLayer === NEW_LAYER_OPTION && (
+                            <input
+                              type="text"
+                              value={customPlaceNewLayerName}
+                              onChange={(e) => setCustomPlaceNewLayerName(e.target.value)}
+                              placeholder="New layer name"
+                              className={`${iw.clickedLayerNewInput} mt-2`}
+                            />
+                          )}
+                        </div>
+                      )}
+                      {onAddPlace && (
                         <button
-                          disabled={isAddingToTrip}
+                          disabled={
+                            isAddingToTrip ||
+                            (customPlaceLayer === NEW_LAYER_OPTION && !customPlaceNewLayerName.trim())
+                          }
                           onClick={async () => {
                             setIsAddingToTrip(true);
                             let name = customPlaceName.trim();
@@ -316,6 +358,10 @@ export const MapView: React.FC<MapViewProps> = ({
                               const result = await reverseGeocode(clickedLocation.lat, clickedLocation.lng);
                               name = result?.place_name || `${clickedLocation.lat.toFixed(4)}, ${clickedLocation.lng.toFixed(4)}`;
                             }
+                            const targetLayer =
+                              customPlaceLayer === NEW_LAYER_OPTION
+                                ? customPlaceNewLayerName.trim()
+                                : customPlaceLayer;
                             onAddPlace({
                               title: name,
                               description: `Custom location at ${clickedLocation.lat.toFixed(4)}, ${clickedLocation.lng.toFixed(4)}`,
@@ -323,7 +369,7 @@ export const MapView: React.FC<MapViewProps> = ({
                               lat: clickedLocation.lat,
                               lng: clickedLocation.lng,
                               customKmlIcon: customPlaceIcon,
-                            });
+                            }, targetLayer || undefined);
                             setClickedLocation(null);
                             setIsEditingName(false);
                             setIsAddingToTrip(false);

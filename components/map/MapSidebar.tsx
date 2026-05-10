@@ -1,5 +1,5 @@
-import React, { useState, useRef, useCallback } from 'react';
-import { ChevronDown, ChevronRight, Layers, GripVertical } from 'lucide-react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { ChevronDown, ChevronRight, Layers, GripVertical, Pencil, Trash2, Plus, Check, X } from 'lucide-react';
 import { TripLayer, TripRecommendation } from '../../types';
 import { AVAILABLE_KML_ICONS } from '../../constants';
 import { getDefaultKmlIcon } from '../../helpers/kmlIconHelper';
@@ -12,6 +12,9 @@ interface MapSidebarProps {
   onToggleSidebar: () => void;
   onSelectPlace: (place: TripRecommendation) => void;
   onReorderPlace?: (fromLayer: string, fromIndex: number, toLayer: string, toIndex: number) => void;
+  onAddLayer?: (name: string) => boolean;
+  onRenameLayer?: (from: string, to: string) => boolean;
+  onDeleteLayer?: (name: string) => void;
 }
 
 export const MapSidebar: React.FC<MapSidebarProps> = ({
@@ -21,10 +24,32 @@ export const MapSidebar: React.FC<MapSidebarProps> = ({
   onToggleSidebar,
   onSelectPlace,
   onReorderPlace,
+  onAddLayer,
+  onRenameLayer,
+  onDeleteLayer,
 }) => {
   const [collapsedLayers, setCollapsedLayers] = useState<Set<string>>(new Set());
   const [dragOver, setDragOver] = useState<{ layerName: string; index: number } | null>(null);
+  const [renamingLayer, setRenamingLayer] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [isCreatingLayer, setIsCreatingLayer] = useState(false);
+  const [newLayerName, setNewLayerName] = useState('');
   const dragItem = useRef<{ layerName: string; index: number } | null>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  const newLayerInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (renamingLayer && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [renamingLayer]);
+
+  useEffect(() => {
+    if (isCreatingLayer && newLayerInputRef.current) {
+      newLayerInputRef.current.focus();
+    }
+  }, [isCreatingLayer]);
 
   const handleDragStart = useCallback((e: React.DragEvent, layerName: string, index: number) => {
     dragItem.current = { layerName, index };
@@ -39,23 +64,34 @@ export const MapSidebar: React.FC<MapSidebarProps> = ({
     setDragOver(null);
   }, []);
 
+  // index = -1 means "the layer itself" — drop appends to the end of that layer.
   const handleDragOver = useCallback((e: React.DragEvent, layerName: string, index: number) => {
+    if (!dragItem.current) return;
     e.preventDefault();
+    e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
     setDragOver({ layerName, index });
   }, []);
 
-  const handleDragLeave = useCallback(() => {
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    // Only clear when leaving the actual element, not when crossing into a child.
+    const related = e.relatedTarget as Node | null;
+    if (related && (e.currentTarget as HTMLElement).contains(related)) return;
     setDragOver(null);
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent, toLayer: string, toIndex: number) => {
+  const handleDrop = useCallback((e: React.DragEvent, toLayer: string, toIndex: number, layerLength: number) => {
     e.preventDefault();
+    e.stopPropagation();
     setDragOver(null);
     if (!dragItem.current || !onReorderPlace) return;
     const { layerName: fromLayer, index: fromIndex } = dragItem.current;
-    if (fromLayer === toLayer && fromIndex === toIndex) return;
-    onReorderPlace(fromLayer, fromIndex, toLayer, toIndex);
+    // Sentinel "layer end" → append to the destination layer's tail.
+    const finalIndex = toIndex === -1 ? layerLength : toIndex;
+    // No-op when the place would land in its current spot.
+    const sameLayer = fromLayer === toLayer;
+    if (sameLayer && (fromIndex === finalIndex || (toIndex === -1 && fromIndex === layerLength - 1))) return;
+    onReorderPlace(fromLayer, fromIndex, toLayer, finalIndex);
     dragItem.current = null;
   }, [onReorderPlace]);
 
@@ -65,6 +101,44 @@ export const MapSidebar: React.FC<MapSidebarProps> = ({
       next.has(name) ? next.delete(name) : next.add(name);
       return next;
     });
+
+  const startRename = (name: string) => {
+    setRenamingLayer(name);
+    setRenameValue(name);
+  };
+
+  const commitRename = () => {
+    if (!renamingLayer || !onRenameLayer) { setRenamingLayer(null); return; }
+    const ok = onRenameLayer(renamingLayer, renameValue);
+    if (!ok && renameValue.trim() && renameValue.trim() !== renamingLayer) {
+      // Name collided — keep the user in the input so they can fix it.
+      return;
+    }
+    setRenamingLayer(null);
+  };
+
+  const cancelRename = () => setRenamingLayer(null);
+
+  const commitNewLayer = () => {
+    if (!onAddLayer) { setIsCreatingLayer(false); return; }
+    const ok = onAddLayer(newLayerName);
+    if (!ok && newLayerName.trim()) return;
+    setNewLayerName('');
+    setIsCreatingLayer(false);
+  };
+
+  const cancelNewLayer = () => {
+    setIsCreatingLayer(false);
+    setNewLayerName('');
+  };
+
+  const confirmDelete = (name: string, count: number) => {
+    if (!onDeleteLayer) return;
+    const msg = count > 0
+      ? `Delete the "${name}" layer and its ${count} place${count === 1 ? '' : 's'}?`
+      : `Delete the empty "${name}" layer?`;
+    if (confirm(msg)) onDeleteLayer(name);
+  };
 
   return (
     <div className={s.wrapper(isSidebarOpen)}>
@@ -82,20 +156,71 @@ export const MapSidebar: React.FC<MapSidebarProps> = ({
         <div className={s.scrollable}>
           {savedLayers.map((layer) => {
             const isCollapsed = collapsedLayers.has(layer.name);
+            const isRenaming = renamingLayer === layer.name;
+            const isLayerDropTarget =
+              !!dragItem.current &&
+              dragOver?.layerName === layer.name &&
+              dragOver?.index === -1;
             return (
-              <div key={layer.name} className={s.layerBorder}>
-                <button onClick={() => toggleLayer(layer.name)} className={s.layerBtn}>
-                  {isCollapsed ? (
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+              <div
+                key={layer.name}
+                className={s.layerBorder}
+                onDragOver={(e) => onReorderPlace && handleDragOver(e, layer.name, -1)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, layer.name, -1, layer.places.length)}
+              >
+                <div className={s.layerRow + (isLayerDropTarget ? ' bg-teal-50 ring-2 ring-teal-400 ring-inset' : '')}>
+                  {isRenaming ? (
+                    <input
+                      ref={renameInputRef}
+                      type="text"
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onBlur={commitRename}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitRename();
+                        else if (e.key === 'Escape') cancelRename();
+                      }}
+                      className={s.layerNameInput}
+                    />
                   ) : (
-                    <ChevronDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                    <>
+                      <button onClick={() => toggleLayer(layer.name)} className={s.layerBtn}>
+                        {isCollapsed ? (
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                        ) : (
+                          <ChevronDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                        )}
+                        <span className={s.layerName}>{layer.name}</span>
+                        <span className={s.layerCount}>{layer.places.length}</span>
+                      </button>
+                      {onRenameLayer && (
+                        <button
+                          onClick={() => startRename(layer.name)}
+                          className={s.layerActionBtn}
+                          title="Rename layer"
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                      )}
+                      {onDeleteLayer && (
+                        <button
+                          onClick={() => confirmDelete(layer.name, layer.places.length)}
+                          className={s.layerDeleteBtn}
+                          title="Delete layer"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                    </>
                   )}
-                  <span className={s.layerName}>{layer.name}</span>
-                  <span className={s.layerCount}>{layer.places.length}</span>
-                </button>
+                </div>
 
                 {!isCollapsed && (
                   <ul>
+                    {layer.places.length === 0 && (
+                      <li className={s.layerEmpty}>No places yet — drag a place here or click on the map.</li>
+                    )}
                     {layer.places.map((place, idx) => {
                       const iconStyle = place.customKmlIcon || getDefaultKmlIcon(place);
                       const iconUrl =
@@ -111,7 +236,7 @@ export const MapSidebar: React.FC<MapSidebarProps> = ({
                           onDragEnd={handleDragEnd}
                           onDragOver={(e) => handleDragOver(e, layer.name, idx)}
                           onDragLeave={handleDragLeave}
-                          onDrop={(e) => handleDrop(e, layer.name, idx)}
+                          onDrop={(e) => handleDrop(e, layer.name, idx, layer.places.length)}
                           className={`transition-all duration-150 ${isDragTarget ? 'border-t-2 border-teal-400' : ''}`}
                         >
                           <button onClick={() => onSelectPlace(place)} className={s.placeBtn(isActive)}>
@@ -130,6 +255,43 @@ export const MapSidebar: React.FC<MapSidebarProps> = ({
             );
           })}
         </div>
+
+        {/* Create-new-layer row */}
+        {onAddLayer && (
+          <div className={s.newLayerWrap}>
+            {isCreatingLayer ? (
+              <div className={s.newLayerInputRow}>
+                <input
+                  ref={newLayerInputRef}
+                  type="text"
+                  value={newLayerName}
+                  onChange={(e) => setNewLayerName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commitNewLayer();
+                    else if (e.key === 'Escape') cancelNewLayer();
+                  }}
+                  placeholder="Layer name"
+                  className={s.newLayerInput}
+                />
+                <button
+                  onClick={commitNewLayer}
+                  disabled={!newLayerName.trim()}
+                  className={s.newLayerConfirmBtn}
+                  title="Create layer"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={cancelNewLayer} className={s.newLayerCancelBtn} title="Cancel">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => setIsCreatingLayer(true)} className={s.newLayerBtn}>
+                <Plus className="w-3.5 h-3.5" /> New layer
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Collapse / expand tab */}
