@@ -1,0 +1,52 @@
+name: Claude PR Review
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+jobs:
+  claude-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Claude review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: '--allowed-tools "Bash(gh pr:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*)"'
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            You are reviewing a pull request in the TripPlanner repo.
+            Follow the conventions in CLAUDE.md.
+
+            Steps:
+            1. Run `gh pr view ${{ github.event.pull_request.number }} --json title,body,author,baseRefName,headRefName` for context.
+            2. Run `gh pr diff ${{ github.event.pull_request.number }}` to see the changes.
+            3. Read any files you need from the working tree to understand the context around the diff.
+            4. Post a single review using `gh pr review ${{ github.event.pull_request.number }} --comment --body-file <file>`.
+
+            The review should cover:
+            - Correctness / likely bugs
+            - Security issues (auth, secrets, injection, OWASP top 10)
+            - Adherence to repo conventions in CLAUDE.md (types in types.ts, styles in styles/, ES module backend in server/, etc.)
+            - TypeScript: any unjustified `any`, missing types
+            - Readability and unnecessary complexity
+
+            Format the review as GitHub-flavored markdown with:
+            - A short summary at the top
+            - Inline file references using `path/to/file.ts:line` so the reviewer can click through
+            - A "Nits" section at the bottom for minor items
+            - If everything looks good, say so explicitly — don't invent issues
+
+            Be concise. No emojis. Do not approve or request changes — leave a plain comment review only.
