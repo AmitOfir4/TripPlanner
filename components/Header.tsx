@@ -62,7 +62,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
           <div className="flex flex-col leading-none">
             <span className={s.brandTitle}>{TRANSLATIONS.title}</span>
-            <span className={s.brandSubtitle}>AI Travel Companion</span>
+            <span className={s.brandSubtitle}>AI Travel Companion!</span>
           </div>
         </div>
 
