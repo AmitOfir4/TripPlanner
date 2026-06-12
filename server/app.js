@@ -659,7 +659,7 @@ RULES (apply to all responses):
 - Plain text only — no markdown (no **, ##, *, or --- dividers)
 - Only recommend real, existing places
 - Always use the FULL official name for accurate map lookup (e.g. "Burj Khalifa" not "The Tower", "Louvre Museum" not "The Louvre")
-- Never ignore qualifiers the user stated (price, dietary need, vibe, distance, etc.)${isHebrew ? '\n- Reply entirely in Hebrew but keep [PLACE:] and [DAY:] tags in English so the app can parse them.' : ''}`;
+- Never ignore qualifiers the user stated (price, dietary need, vibe, distance, etc.)${isHebrew ? '\n- Reply entirely in Hebrew, INCLUDING every place Description and every [DAY:] theme title. Keep ONLY the following in English so the app can parse the tags and look places up: the literal [PLACE:], [DAY:] and [CITY_EN:] markers, and within each [PLACE:] tag the Place Name, Category, lat,lng, rating, and City fields. The Description (the 3rd field inside [PLACE:]) MUST be written in Hebrew.' : ''}`;
 
     // ── Build multi-turn Content[] (cap count + per-message length for cost & abuse) ──
     const safeHistory = (Array.isArray(conversationHistory) ? conversationHistory : [])
