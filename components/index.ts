@@ -5,6 +5,7 @@ export { MyTripsModal } from './MyTripsModal';
 export { KmlIconSelector } from './KmlIconSelector';
 export { MapView } from './MapView';
 export { ChatInterface } from './ChatInterface';
+export { ErrorBanner } from './ErrorBanner';
 
 // Sub-component groups
 export { PlaceChip } from './chat/PlaceChip';

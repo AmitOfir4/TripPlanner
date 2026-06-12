@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Header } from './components/Header';
 import { ChatInterface } from './components/ChatInterface';
+import { ErrorBanner } from './components/ErrorBanner';
 import { UploadModal } from './components/UploadModal';
 import { SaveTripModal } from './components/SaveTripModal';
 import { MyTripsModal } from './components/MyTripsModal';
@@ -13,29 +14,24 @@ import { useMapImport } from './hooks/useMapImport';
 import { useUserLocation } from './hooks/useUserLocation';
 import { useChat } from './hooks/useChat';
 import { useUpload } from './hooks/useUpload';
-import { TripRecommendation, SavedTripSummary } from './types';
-import {
-  createSavedTrip, updateSavedTrip,
-  listSavedTrips, getSavedTrip, deleteSavedTrip,
-  setSavedTripDriveLink,
-  type TripPayload,
-} from './services/tripsService';
+import { useErrorBanner } from './hooks/useErrorBanner';
+import { useSaveTrip } from './hooks/useSaveTrip';
+import { useMyTrips } from './hooks/useMyTrips';
+import { usePlaceActions } from './hooks/usePlaceActions';
+import { TripRecommendation } from './types';
+import { setSavedTripDriveLink } from './services/tripsService';
 import { appStyles as s } from './styles/app';
 
 const App: React.FC = () => {
+  // ── Core hooks ───────────────────────────────────────────────────
   const userLocation = useUserLocation();
   const { googleUser, login, logout } = useGoogleAuth();
   const { apiKey, setApiKey, clearApiKey, hasApiKey } = useApiKey();
-  const [focusedPlace, setFocusedPlace] = useState<TripRecommendation | null>(null);
-  type ErrorKind = 'api_key' | 'quota' | 'invalid_key' | 'generic';
-  const [errorMessage, setErrorMessageRaw] = useState<string>('');
-  const [errorKind, setErrorKind] = useState<ErrorKind>('api_key');
-  const setErrorMessage = (msg: string, kind: ErrorKind = 'api_key') => {
-    setErrorMessageRaw(msg);
-    if (msg) setErrorKind(kind);
-  };
   const [language, setLanguage] = useState<'en' | 'he'>('en');
+  const [focusedPlace, setFocusedPlace] = useState<TripRecommendation | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
+
+  const { errorMessage, errorKind, setErrorMessage, clearError } = useErrorBanner();
 
   const {
     currentCity, setCurrentCity, savedLayers, setSavedLayers,
@@ -43,62 +39,6 @@ const App: React.FC = () => {
     tripId, tripTitle, markSaved, loadSavedTrip,
     tripDriveFileId, setTripDriveFileId,
   } = useTripPlanner(userLocation, apiKey);
-
-  // ── Save trip state ──────────────────────────────────────────────
-  const [showSaveModal, setShowSaveModal] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-
-  const buildTripPayload = (title: string): TripPayload => ({
-    title,
-    city: currentCity || title,
-    summary: '',
-    layers: savedLayers,
-    sources: [],
-    // Carry the link through PUT updates so a save doesn't blow it away.
-    ...(tripDriveFileId ? { driveFileId: tripDriveFileId } : {}),
-  });
-
-  const handleSaveClick = () => {
-    if (!googleUser || savedLayers.length === 0) return;
-    if (tripId) {
-      // Already saved — fast-path update with the existing title.
-      void persistUpdate(tripTitle || currentCity || 'Untitled trip');
-    } else {
-      setSaveError(null);
-      setShowSaveModal(true);
-    }
-  };
-
-  const persistCreate = async (title: string) => {
-    if (!googleUser) return;
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const trip = await createSavedTrip(buildTripPayload(title), googleUser.accessToken);
-      markSaved(trip.id, trip.title);
-      setShowSaveModal(false);
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Failed to save trip');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const persistUpdate = async (title: string) => {
-    if (!googleUser || !tripId) return;
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const trip = await updateSavedTrip(tripId, buildTripPayload(title), googleUser.accessToken);
-      markSaved(trip.id, trip.title);
-    } catch (err) {
-      // On update failure, surface via alert (no modal is open).
-      alert(err instanceof Error ? err.message : 'Failed to save trip');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const {
     chatMessages, chatLoading, verifyingTitles, handleSendMessage,
@@ -112,130 +52,20 @@ const App: React.FC = () => {
 
   const { importingMap, importFromFile } = useMapImport();
 
-  // ── My Trips state + handlers ────────────────────────────────────
-  const [showMyTripsModal, setShowMyTripsModal] = useState(false);
-  const [loadingTrips, setLoadingTrips] = useState(false);
-  const [myTrips, setMyTrips] = useState<SavedTripSummary[]>([]);
-  const [myTripsCursor, setMyTripsCursor] = useState<string | null>(null);
-  const [loadingMoreTrips, setLoadingMoreTrips] = useState(false);
-  const [loadingTripId, setLoadingTripId] = useState<string | null>(null);
-  const [myTripsError, setMyTripsError] = useState<string | null>(null);
+  // ── Feature hooks (state + handlers extracted from this component) ─
+  const { showSaveModal, saving, saveError, handleSaveClick, persistCreate, closeSaveModal } =
+    useSaveTrip({ googleUser, savedLayers, currentCity, tripId, tripTitle, tripDriveFileId, markSaved });
 
-  const handleMyTripsClick = async () => {
-    if (!googleUser) { login(); return; }
-    setShowMyTripsModal(true);
-    setMyTripsError(null);
-    setLoadingTrips(true);
-    try {
-      const page = await listSavedTrips(googleUser.accessToken);
-      setMyTrips(page.trips);
-      setMyTripsCursor(page.nextCursor);
-    } catch (err) {
-      setMyTripsError(err instanceof Error ? err.message : 'Failed to load trips');
-    } finally {
-      setLoadingTrips(false);
-    }
-  };
+  const {
+    showMyTripsModal, loadingTrips, myTrips, loadingMoreTrips, loadingTripId, myTripsError,
+    hasMore, openMyTrips, loadMoreTrips, selectTrip, deleteTrip, importKmlFile, closeMyTrips,
+  } = useMyTrips({
+    googleUser, login, loadSavedTrip, tripId, markSaved,
+    importFromFile, currentCity, setCurrentCity, setSavedLayers,
+  });
 
-  const handleLoadMoreTrips = async () => {
-    if (!googleUser || !myTripsCursor || loadingMoreTrips) return;
-    setLoadingMoreTrips(true);
-    setMyTripsError(null);
-    try {
-      const page = await listSavedTrips(googleUser.accessToken, { before: myTripsCursor });
-      setMyTrips(prev => [...prev, ...page.trips]);
-      setMyTripsCursor(page.nextCursor);
-    } catch (err) {
-      setMyTripsError(err instanceof Error ? err.message : 'Failed to load more trips');
-    } finally {
-      setLoadingMoreTrips(false);
-    }
-  };
-
-  const handleSelectTrip = async (id: string) => {
-    if (!googleUser) return;
-    setLoadingTripId(id);
-    setMyTripsError(null);
-    try {
-      const trip = await getSavedTrip(id, googleUser.accessToken);
-      loadSavedTrip(trip);
-      setShowMyTripsModal(false);
-    } catch (err) {
-      setMyTripsError(err instanceof Error ? err.message : 'Failed to load trip');
-    } finally {
-      setLoadingTripId(null);
-    }
-  };
-
-  const handleDeleteTrip = async (id: string) => {
-    if (!googleUser) return;
-    if (!confirm('Delete this trip? This cannot be undone.')) return;
-    try {
-      await deleteSavedTrip(id, googleUser.accessToken);
-      setMyTrips(prev => prev.filter(t => t.id !== id));
-      // If the user just deleted the trip currently loaded into state, mark it
-      // as unsaved so the next save creates a new doc instead of 404'ing.
-      if (tripId === id) markSaved('', '');
-    } catch (err) {
-      setMyTripsError(err instanceof Error ? err.message : 'Failed to delete trip');
-    }
-  };
-
-  const handleKMLFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    event.target.value = '';
-    try {
-      const { layers, cityName } = await importFromFile(file, currentCity);
-      setSavedLayers((prev) => [...prev, ...layers]);
-      if (!currentCity) setCurrentCity(cityName);
-      const totalPlaces = layers.reduce((acc, l) => acc + l.places.length, 0);
-      setShowMyTripsModal(false);
-      alert(`Successfully imported "${file.name}" with ${totalPlaces} places!`);
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to import file');
-    }
-  };
-
-  // ── Place handlers ───────────────────────────────────────────────
-
-  const handleRemovePlace = (layerName: string, placeTitle: string) => {
-    // Keep empty layers — the user can delete them explicitly from the sidebar.
-    setSavedLayers((prev) =>
-      prev.map((layer) =>
-        layer.name === layerName
-          ? { ...layer, places: layer.places.filter((p) => p.title !== placeTitle) }
-          : layer
-      )
-    );
-  };
-
-  const handleRemovePlaceFromMap = (place: TripRecommendation) => {
-    const layer = savedLayers.find((l) => l.places.some((p) => p.title === place.title));
-    if (layer) handleRemovePlace(layer.name, place.title);
-  };
-
-  const handleUpdatePlaceFromMap = (updated: TripRecommendation) => {
-    setSavedLayers((prev) =>
-      prev.map((layer) => ({
-        ...layer,
-        places: layer.places.map((p) => (p.title === updated.title ? updated : p)),
-      }))
-    );
-  };
-
-  const handleReorderPlace = (fromLayer: string, fromIndex: number, toLayer: string, toIndex: number) => {
-    setSavedLayers((prev) => {
-      const layers = prev.map((l) => ({ ...l, places: [...l.places] }));
-      const srcLayer = layers.find((l) => l.name === fromLayer);
-      const dstLayer = layers.find((l) => l.name === toLayer);
-      if (!srcLayer || !dstLayer) return prev;
-      const [moved] = srcLayer.places.splice(fromIndex, 1);
-      dstLayer.places.splice(toIndex, 0, moved);
-      // Preserve empty layers — they may have been intentionally created.
-      return layers;
-    });
-  };
+  const { removePlaceFromMap, updatePlaceFromMap, reorderPlace } =
+    usePlaceActions({ savedLayers, setSavedLayers });
 
   const handleViewInMap = (place: TripRecommendation) => {
     // Scroll first so the user sees the map immediately; the pin updates a
@@ -246,8 +76,13 @@ const App: React.FC = () => {
     handleShowInMapFromChat(place).catch((err) => console.error('Show-in-map verify failed:', err));
   };
 
-  // ── Render ───────────────────────────────────────────────────────
+  // Open the API-key editor in the Header from the error banner's CTA.
+  const openApiKeyEditor = () => {
+    clearError();
+    document.querySelector('[title="Add your Gemini API Key"]')?.dispatchEvent(new Event('click', { bubbles: true }));
+  };
 
+  // ── Render ───────────────────────────────────────────────────────
   return (
     <div className={s.container}>
       <Header
@@ -256,7 +91,7 @@ const App: React.FC = () => {
         hasApiKey={hasApiKey}
         language={language}
         onLanguageChange={setLanguage}
-        onImportClick={handleMyTripsClick}
+        onImportClick={openMyTrips}
         onLogout={logout}
         onReset={resetTrip}
         onApiKeyChange={setApiKey}
@@ -266,40 +101,15 @@ const App: React.FC = () => {
       <main className={s.main}>
         <div className={s.scrollArea}>
           <div className={s.contentWrap}>
-            {/* Error Banner */}
-            {errorMessage && (() => {
-              const banner = {
-                api_key:     { icon: '🔑', title: 'API Key Required',   cta: 'Add API Key' },
-                invalid_key: { icon: '❌', title: 'Invalid API Key',     cta: 'Update Key' },
-                quota:       { icon: '⏱️', title: 'Daily Limit Reached', cta: null as string | null },
-                generic:     { icon: '⚠️', title: 'Something went wrong', cta: null as string | null },
-              }[errorKind];
-              return (
-                <div className={s.errorBanner}>
-                  <div className={s.errorInner}>
-                    <div className={s.errorIconWrap}>{banner.icon}</div>
-                    <div className="flex-1">
-                      <h3 className={s.errorTitle}>{banner.title}</h3>
-                      <p className={s.errorText}>{errorMessage}</p>
-                      {banner.cta && (
-                        <button
-                          onClick={() => {
-                            setErrorMessage('');
-                            document.querySelector('[title="Add your Gemini API Key"]')?.dispatchEvent(new Event('click', { bubbles: true }));
-                          }}
-                          className={s.errorBtn}
-                        >
-                          {banner.cta}
-                        </button>
-                      )}
-                    </div>
-                    <button onClick={() => setErrorMessage('')} className={s.errorClose}>×</button>
-                  </div>
-                </div>
-              );
-            })()}
+            {errorMessage && (
+              <ErrorBanner
+                message={errorMessage}
+                kind={errorKind}
+                onDismiss={clearError}
+                onAddKey={openApiKeyEditor}
+              />
+            )}
 
-            {/* Chat & Map Layout */}
             <div ref={mapContainerRef} className={s.chatMapLayout}>
               <div className={s.chatColumn}>
                 <ChatInterface
@@ -322,9 +132,9 @@ const App: React.FC = () => {
                   focusedPlace={focusedPlace}
                   userLocation={userLocation ? { lat: userLocation.latitude, lng: userLocation.longitude } : null}
                   onAddPlace={savePlace}
-                  onRemovePlace={handleRemovePlaceFromMap}
-                  onUpdatePlace={handleUpdatePlaceFromMap}
-                  onReorderPlace={handleReorderPlace}
+                  onRemovePlace={removePlaceFromMap}
+                  onUpdatePlace={updatePlaceFromMap}
+                  onReorderPlace={reorderPlace}
                   onAddLayer={addLayer}
                   onRenameLayer={renameLayer}
                   onDeleteLayer={deleteLayer}
@@ -332,7 +142,6 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            {/* Action buttons */}
             {savedLayers.length > 0 && (
               <div className={s.actionRow}>
                 <button onClick={() => handleDownload(savedLayers, currentCity)} className={s.downloadBtn}>
@@ -364,13 +173,13 @@ const App: React.FC = () => {
         loadingTripId={loadingTripId}
         errorMessage={myTripsError}
         importingFile={importingMap}
-        hasMore={myTripsCursor !== null}
+        hasMore={hasMore}
         loadingMore={loadingMoreTrips}
-        onClose={() => { if (loadingTripId === null) setShowMyTripsModal(false); }}
-        onSelectTrip={handleSelectTrip}
-        onDeleteTrip={handleDeleteTrip}
-        onFileUpload={handleKMLFileUpload}
-        onLoadMore={handleLoadMoreTrips}
+        onClose={closeMyTrips}
+        onSelectTrip={selectTrip}
+        onDeleteTrip={deleteTrip}
+        onFileUpload={importKmlFile}
+        onLoadMore={loadMoreTrips}
       />
 
       <UploadModal
@@ -406,7 +215,7 @@ const App: React.FC = () => {
         saving={saving}
         errorMessage={saveError}
         mode="create"
-        onClose={() => { if (!saving) { setShowSaveModal(false); setSaveError(null); } }}
+        onClose={closeSaveModal}
         onConfirm={persistCreate}
       />
     </div>
