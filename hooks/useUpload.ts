@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { MyMapsFile, fetchKmlFiles } from '../googleDriveService';
 import { TripService } from '../services/tripService';
 import { TripLayer } from '../types';
+import { isAuthError } from '../helpers/apiError';
 
 interface UseUploadReturn {
   showUploadModal: boolean;
@@ -22,7 +23,13 @@ interface UseUploadReturn {
   handleDownload: (savedLayers: TripLayer[], currentCity: string) => Promise<void>;
 }
 
-export const useUpload = (): UseUploadReturn => {
+interface UseUploadDeps {
+  /** Called when Drive rejects our token, so the session ends and the user is
+   *  prompted to sign in again. */
+  onAuthFailure: () => void;
+}
+
+export const useUpload = ({ onAuthFailure }: UseUploadDeps): UseUploadReturn => {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadDriveFiles, setUploadDriveFiles] = useState<MyMapsFile[]>([]);
   const [loadingDriveFiles, setLoadingDriveFiles] = useState(false);
@@ -46,6 +53,7 @@ export const useUpload = (): UseUploadReturn => {
       setUploadDriveFiles(files);
     } catch (error) {
       console.error('Error fetching Drive files:', error);
+      if (isAuthError(error)) onAuthFailure();
     } finally {
       setLoadingDriveFiles(false);
     }
@@ -71,7 +79,13 @@ export const useUpload = (): UseUploadReturn => {
       return result;
     } catch (error) {
       console.error('Error uploading to Drive:', error);
-      alert('Failed to upload to Google Drive. Please try again.');
+      if (isAuthError(error)) {
+        // The banner takes over from here — an alert saying "try again" would
+        // just send the user back into the same dead session.
+        onAuthFailure();
+      } else {
+        alert('Failed to upload to Google Drive. Please try again.');
+      }
       return null;
     } finally {
       setUploading(false);

@@ -1,4 +1,5 @@
 export { useGoogleAuth } from './useGoogleAuth';
+export type { UseGoogleAuthReturn } from './useGoogleAuth';
 export { useTripPlanner } from './useTripPlanner';
 export { useMapImport } from './useMapImport';
 export { useUserLocation } from './useUserLocation';
@@ -10,3 +11,4 @@ export type { ErrorKind } from './useErrorBanner';
 export { useSaveTrip } from './useSaveTrip';
 export { useMyTrips } from './useMyTrips';
 export { usePlaceActions } from './usePlaceActions';
+export { useDraftAutosave } from './useDraftAutosave';

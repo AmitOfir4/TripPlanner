@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Header } from './components/Header';
 import { ChatInterface } from './components/ChatInterface';
 import { ErrorBanner } from './components/ErrorBanner';
+import { SaveStatusBanner } from './components/SaveStatusBanner';
 import { UploadModal } from './components/UploadModal';
 import { SaveTripModal } from './components/SaveTripModal';
 import { MyTripsModal } from './components/MyTripsModal';
@@ -18,6 +19,7 @@ import { useErrorBanner } from './hooks/useErrorBanner';
 import { useSaveTrip } from './hooks/useSaveTrip';
 import { useMyTrips } from './hooks/useMyTrips';
 import { usePlaceActions } from './hooks/usePlaceActions';
+import { useDraftAutosave } from './hooks/useDraftAutosave';
 import { TripRecommendation } from './types';
 import { setSavedTripDriveLink } from './services/tripsService';
 import { appStyles as s } from './styles/app';
@@ -25,7 +27,7 @@ import { appStyles as s } from './styles/app';
 const App: React.FC = () => {
   // ── Core hooks ───────────────────────────────────────────────────
   const userLocation = useUserLocation();
-  const { googleUser, login, logout } = useGoogleAuth();
+  const { googleUser, login, logout, sessionExpired, notifyAuthFailure, dismissSessionExpired } = useGoogleAuth();
   const { apiKey, setApiKey, clearApiKey, hasApiKey } = useApiKey();
   const [language, setLanguage] = useState<'en' | 'he'>('en');
   const [focusedPlace, setFocusedPlace] = useState<TripRecommendation | null>(null);
@@ -48,13 +50,18 @@ const App: React.FC = () => {
   const {
     showUploadModal, uploadDriveFiles, loadingDriveFiles, uploading, uploadResult,
     openUploadModal, closeUploadModal, refreshDriveFiles, doUpload, handleDownload,
-  } = useUpload();
+  } = useUpload({ onAuthFailure: notifyAuthFailure });
 
   const { importingMap, importFromFile } = useMapImport();
 
   // ── Feature hooks (state + handlers extracted from this component) ─
-  const { showSaveModal, saving, saveError, justSaved, handleSaveClick, persistCreate, closeSaveModal } =
-    useSaveTrip({ googleUser, savedLayers, currentCity, tripId, tripTitle, tripDriveFileId, markSaved });
+  const {
+    showSaveModal, saving, saveError, justSaved, autoSaveError, pendingServerSave,
+    retryAutoSave, dismissAutoSaveError, handleSaveClick, persistCreate, closeSaveModal,
+  } = useSaveTrip({
+    googleUser, savedLayers, currentCity, tripId, tripTitle, tripDriveFileId,
+    markSaved, onAuthFailure: notifyAuthFailure,
+  });
 
   const {
     showMyTripsModal, loadingTrips, myTrips, loadingMoreTrips, loadingTripId, myTripsError,
@@ -62,10 +69,17 @@ const App: React.FC = () => {
   } = useMyTrips({
     googleUser, login, loadSavedTrip, tripId, markSaved,
     importFromFile, currentCity, setCurrentCity, setSavedLayers,
+    onAuthFailure: notifyAuthFailure,
   });
 
   const { removePlaceFromMap, updatePlaceFromMap, reorderPlace } =
     usePlaceActions({ savedLayers, setSavedLayers });
+
+  // Mirror the working trip into localStorage. Independent of auth and of
+  // whether the trip has ever been saved, so a refresh never costs work.
+  useDraftAutosave({
+    currentCity, savedLayers, tripId, tripTitle, tripDriveFileId, chatMessages, pendingServerSave,
+  });
 
   const handleViewInMap = (place: TripRecommendation) => {
     // Scroll first so the user sees the map immediately; the pin updates a
@@ -109,6 +123,14 @@ const App: React.FC = () => {
                 onAddKey={openApiKeyEditor}
               />
             )}
+
+            <SaveStatusBanner
+              sessionExpired={sessionExpired}
+              autoSaveError={autoSaveError}
+              onSignIn={login}
+              onRetry={retryAutoSave}
+              onDismiss={sessionExpired ? dismissSessionExpired : dismissAutoSaveError}
+            />
 
             <div ref={mapContainerRef} className={s.chatMapLayout}>
               <div className={s.chatColumn}>

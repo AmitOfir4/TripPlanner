@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { TripRecommendation, TripLayer, SavedTripDoc } from '../types';
+import { readTripDraft, clearTripDraft } from '../helpers/localDraft';
 
 interface UseTripPlannerReturn {
   currentCity: string;
@@ -35,11 +36,15 @@ export const useTripPlanner = (
   userLocation?: { latitude: number; longitude: number },
   apiKey?: string
 ): UseTripPlannerReturn => {
-  const [currentCity, setCurrentCityState] = useState('');
-  const [savedLayers, setSavedLayersState] = useState<TripLayer[]>([]);
-  const [tripId, setTripId] = useState<string | null>(null);
-  const [tripTitle, setTripTitle] = useState<string>('');
-  const [tripDriveFileId, setTripDriveFileIdState] = useState<string | null>(null);
+  // Restore the local draft so a refresh resumes where the user left off.
+  // Read once, lazily — every piece of state below seeds from the same snapshot.
+  const [draft] = useState(() => readTripDraft());
+
+  const [currentCity, setCurrentCityState] = useState(draft?.currentCity ?? '');
+  const [savedLayers, setSavedLayersState] = useState<TripLayer[]>(draft?.savedLayers ?? []);
+  const [tripId, setTripId] = useState<string | null>(draft?.tripId ?? null);
+  const [tripTitle, setTripTitle] = useState<string>(draft?.tripTitle ?? '');
+  const [tripDriveFileId, setTripDriveFileIdState] = useState<string | null>(draft?.tripDriveFileId ?? null);
 
   const setCurrentCity = (city: string) => {
     setCurrentCityState(city);
@@ -118,6 +123,9 @@ export const useTripPlanner = (
     setTripId(null);
     setTripTitle('');
     setTripDriveFileIdState(null);
+    // Drop the local draft too — an explicit reset means the user wants a clean
+    // slate, not the old trip back on the next refresh.
+    clearTripDraft();
   };
 
   const loadSavedTrip = (trip: SavedTripDoc) => {

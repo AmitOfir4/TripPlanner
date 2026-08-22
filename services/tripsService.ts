@@ -1,4 +1,7 @@
 import { GroundingChunk, TripLayer, SavedTripSummary, SavedTripDoc, SavedTripsPage } from '../types';
+import { ApiError, isAuthError } from '../helpers/apiError';
+
+export { ApiError, isAuthError };
 
 const TRIPS_ENDPOINT = import.meta.env.VITE_TRIPS_ENDPOINT ||
                        (import.meta.env.DEV ? 'http://localhost:3001/api/trips' : '/api/trips');
@@ -19,6 +22,10 @@ async function authedFetch(url: string, accessToken: string, init: RequestInit =
     headers.set('Content-Type', 'application/json');
   }
   return fetch(url, { ...init, headers });
+}
+
+async function apiError(res: Response, fallback: string): Promise<ApiError> {
+  return new ApiError(res.status, await readError(res, fallback));
 }
 
 async function readError(res: Response, fallback: string): Promise<string> {
@@ -60,7 +67,7 @@ export async function listSavedTrips(
   const url = qs ? `${TRIPS_ENDPOINT}?${qs}` : TRIPS_ENDPOINT;
 
   const res = await authedFetch(url, accessToken);
-  if (!res.ok) throw new Error(await readError(res, `List trips failed: ${res.status}`));
+  if (!res.ok) throw await apiError(res, `List trips failed: ${res.status}`);
   const data = await res.json();
   return {
     trips: Array.isArray(data?.trips) ? data.trips : [],
@@ -70,7 +77,7 @@ export async function listSavedTrips(
 
 export async function getSavedTrip(id: string, accessToken: string): Promise<SavedTripDoc> {
   const res = await authedFetch(`${TRIPS_ENDPOINT}/${encodeURIComponent(id)}`, accessToken);
-  if (!res.ok) throw new Error(await readError(res, `Load trip failed: ${res.status}`));
+  if (!res.ok) throw await apiError(res, `Load trip failed: ${res.status}`);
   const data = await res.json();
   return data.trip;
 }
@@ -80,7 +87,7 @@ export async function createSavedTrip(payload: TripPayload, accessToken: string)
     method: 'POST',
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error(await readError(res, `Save trip failed: ${res.status}`));
+  if (!res.ok) throw await apiError(res, `Save trip failed: ${res.status}`);
   const data = await res.json();
   return data.trip;
 }
@@ -90,7 +97,7 @@ export async function updateSavedTrip(id: string, payload: TripPayload, accessTo
     method: 'PUT',
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error(await readError(res, `Update trip failed: ${res.status}`));
+  if (!res.ok) throw await apiError(res, `Update trip failed: ${res.status}`);
   const data = await res.json();
   return data.trip;
 }
@@ -100,7 +107,7 @@ export async function deleteSavedTrip(id: string, accessToken: string): Promise<
     method: 'DELETE',
   });
   if (!res.ok && res.status !== 204) {
-    throw new Error(await readError(res, `Delete trip failed: ${res.status}`));
+    throw await apiError(res, `Delete trip failed: ${res.status}`);
   }
 }
 
@@ -118,6 +125,6 @@ export async function setSavedTripDriveLink(
     body: JSON.stringify({ driveFileId }),
   });
   if (!res.ok && res.status !== 204) {
-    throw new Error(await readError(res, `Update drive link failed: ${res.status}`));
+    throw await apiError(res, `Update drive link failed: ${res.status}`);
   }
 }

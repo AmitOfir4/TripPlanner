@@ -3,6 +3,7 @@ import { ChatMessage } from '../components/ChatInterface';
 import { sendChatMessage, ChatError } from '../chatService';
 import { geocodeAddress } from '../services/geocodeService';
 import { TripRecommendation } from '../types';
+import { readTripDraft } from '../helpers/localDraft';
 
 interface UseChatReturn {
   chatMessages: ChatMessage[];
@@ -54,7 +55,11 @@ export const useChat = (
   setFocusedPlace: (place: TripRecommendation | null) => void,
   setErrorMessage: (msg: string, kind?: ErrorKind) => void
 ): UseChatReturn => {
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  // Seed from the local draft so a refresh keeps the conversation that produced
+  // the current trip, not just the map.
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(
+    () => readTripDraft()?.chatMessages ?? []
+  );
   const [chatLoading, setChatLoading] = useState(false);
   const [verifyingTitles, setVerifyingTitles] = useState<ReadonlySet<string>>(new Set());
 

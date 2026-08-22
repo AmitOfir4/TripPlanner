@@ -10,4 +10,5 @@ export {
   deleteSavedTrip,
   setSavedTripDriveLink,
 } from './tripsService';
+export { ApiError, isAuthError } from './tripsService';
 export type { TripPayload } from './tripsService';

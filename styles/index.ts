@@ -3,3 +3,4 @@ export { chatStyles, placeChipStyles } from './chat';
 export { mapViewStyles, mapSidebarStyles, mapInfoWindowStyles, mapSearchStyles } from './map';
 export { uploadModalStyles, kmlIconSelectorStyles, saveTripModalStyles, myTripsModalStyles } from './modals';
 export { appStyles } from './app';
+export { saveStatusStyles } from './saveStatus';

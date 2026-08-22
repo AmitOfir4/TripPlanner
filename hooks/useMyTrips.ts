@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { GoogleUser } from '../googleAuthService';
+import { GoogleUser, isTokenExpired } from '../googleAuthService';
 import { SavedTripSummary, SavedTripDoc, TripLayer } from '../types';
-import { listSavedTrips, getSavedTrip, deleteSavedTrip } from '../services/tripsService';
+import { listSavedTrips, getSavedTrip, deleteSavedTrip, isAuthError } from '../services/tripsService';
 
 interface UseMyTripsDeps {
   googleUser: GoogleUser | null;
@@ -13,6 +13,9 @@ interface UseMyTripsDeps {
   currentCity: string;
   setCurrentCity: (city: string) => void;
   setSavedLayers: React.Dispatch<React.SetStateAction<TripLayer[]>>;
+  /** Called when the server rejects our token, so the session ends and the user
+   *  is prompted to sign in again. */
+  onAuthFailure: () => void;
 }
 
 interface UseMyTripsReturn {
@@ -35,7 +38,7 @@ interface UseMyTripsReturn {
 export const useMyTrips = (deps: UseMyTripsDeps): UseMyTripsReturn => {
   const {
     googleUser, login, loadSavedTrip, tripId, markSaved,
-    importFromFile, currentCity, setCurrentCity, setSavedLayers,
+    importFromFile, currentCity, setCurrentCity, setSavedLayers, onAuthFailure,
   } = deps;
 
   const [showMyTripsModal, setShowMyTripsModal] = useState(false);
@@ -46,8 +49,19 @@ export const useMyTrips = (deps: UseMyTripsDeps): UseMyTripsReturn => {
   const [loadingTripId, setLoadingTripId] = useState<string | null>(null);
   const [myTripsError, setMyTripsError] = useState<string | null>(null);
 
+  /** Turn a failed request into a message, ending the session first if the
+   *  token was the problem. */
+  const reportError = (err: unknown, fallback: string): string => {
+    if (isAuthError(err)) {
+      onAuthFailure();
+      return 'Your Google session expired. Sign in again to see your saved trips.';
+    }
+    return err instanceof Error ? err.message : fallback;
+  };
+
   const openMyTrips = async () => {
-    if (!googleUser) { login(); return; }
+    // A known-dead token would just 401 — send the user straight to sign-in.
+    if (!googleUser || isTokenExpired(googleUser)) { login(); return; }
     setShowMyTripsModal(true);
     setMyTripsError(null);
     setLoadingTrips(true);
@@ -56,7 +70,7 @@ export const useMyTrips = (deps: UseMyTripsDeps): UseMyTripsReturn => {
       setMyTrips(page.trips);
       setMyTripsCursor(page.nextCursor);
     } catch (err) {
-      setMyTripsError(err instanceof Error ? err.message : 'Failed to load trips');
+      setMyTripsError(reportError(err, 'Failed to load trips'));
     } finally {
       setLoadingTrips(false);
     }
@@ -71,7 +85,7 @@ export const useMyTrips = (deps: UseMyTripsDeps): UseMyTripsReturn => {
       setMyTrips(prev => [...prev, ...page.trips]);
       setMyTripsCursor(page.nextCursor);
     } catch (err) {
-      setMyTripsError(err instanceof Error ? err.message : 'Failed to load more trips');
+      setMyTripsError(reportError(err, 'Failed to load more trips'));
     } finally {
       setLoadingMoreTrips(false);
     }
@@ -86,7 +100,7 @@ export const useMyTrips = (deps: UseMyTripsDeps): UseMyTripsReturn => {
       loadSavedTrip(trip);
       setShowMyTripsModal(false);
     } catch (err) {
-      setMyTripsError(err instanceof Error ? err.message : 'Failed to load trip');
+      setMyTripsError(reportError(err, 'Failed to load trip'));
     } finally {
       setLoadingTripId(null);
     }
@@ -102,7 +116,7 @@ export const useMyTrips = (deps: UseMyTripsDeps): UseMyTripsReturn => {
       // as unsaved so the next save creates a new doc instead of 404'ing.
       if (tripId === id) markSaved('', '');
     } catch (err) {
-      setMyTripsError(err instanceof Error ? err.message : 'Failed to delete trip');
+      setMyTripsError(reportError(err, 'Failed to delete trip'));
     }
   };
 

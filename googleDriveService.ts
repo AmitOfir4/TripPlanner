@@ -1,3 +1,5 @@
+import { ApiError } from './helpers/apiError';
+
 export interface MyMapsFile {
   id: string;
   name: string;
@@ -27,13 +29,16 @@ export async function fetchKmlFiles(accessToken: string): Promise<MyMapsFile[]> 
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch KML files: ${response.statusText}`);
+      throw new ApiError(response.status, `Failed to fetch KML files: ${response.statusText}`);
     }
 
     const data = await response.json();
     return data.files || [];
   } catch (error) {
     console.error('Error fetching KML files:', error);
+    // A dead token has to reach the caller — swallowing it into an empty list
+    // renders the picker as "you have no files" instead of "sign in again".
+    if (error instanceof ApiError) throw error;
     return [];
   }
 }
@@ -84,7 +89,7 @@ export async function uploadKMLToDrive(
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       console.error('Upload error:', errorData);
-      throw new Error(`Failed to upload KML: ${response.statusText}`);
+      throw new ApiError(response.status, `Failed to upload KML: ${response.statusText}`);
     }
 
     const result = await response.json();
