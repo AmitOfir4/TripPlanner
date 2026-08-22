@@ -25,8 +25,9 @@ interface UseUploadReturn {
 
 interface UseUploadDeps {
   /** Called when Drive rejects our token, so the session ends and the user is
-   *  prompted to sign in again. */
-  onAuthFailure: () => void;
+   *  prompted to sign in again. Takes the token the request used, so a late
+   *  401 can't kill a session the user has since renewed. */
+  onAuthFailure: (token?: string) => void;
 }
 
 export const useUpload = ({ onAuthFailure }: UseUploadDeps): UseUploadReturn => {
@@ -53,7 +54,7 @@ export const useUpload = ({ onAuthFailure }: UseUploadDeps): UseUploadReturn => 
       setUploadDriveFiles(files);
     } catch (error) {
       console.error('Error fetching Drive files:', error);
-      if (isAuthError(error)) onAuthFailure();
+      if (isAuthError(error)) onAuthFailure(accessToken);
     } finally {
       setLoadingDriveFiles(false);
     }
@@ -82,7 +83,7 @@ export const useUpload = ({ onAuthFailure }: UseUploadDeps): UseUploadReturn => 
       if (isAuthError(error)) {
         // The banner takes over from here — an alert saying "try again" would
         // just send the user back into the same dead session.
-        onAuthFailure();
+        onAuthFailure(accessToken);
       } else {
         alert('Failed to upload to Google Drive. Please try again.');
       }

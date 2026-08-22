@@ -21,8 +21,9 @@ export interface UseGoogleAuthReturn {
    *  prompt so a dead session can't masquerade as a live one. */
   sessionExpired: boolean;
   /** Called by API callers that got a 401/403 — ends the session and raises
-   *  the sign-in-again prompt. */
-  notifyAuthFailure: () => void;
+   *  the sign-in-again prompt. Pass the token the failed request actually used
+   *  so a late failure can't tear down a session the user has since renewed. */
+  notifyAuthFailure: (token?: string) => void;
   dismissSessionExpired: () => void;
 }
 
@@ -73,7 +74,10 @@ function loadCachedUser(): { user: GoogleUser | null; expired: boolean } {
 }
 
 export const useGoogleAuth = (): UseGoogleAuthReturn => {
-  const initial = useRef(loadCachedUser()).current;
+  // Lazy initializer: a bare `useRef(loadCachedUser())` would re-run the
+  // function on every render — re-reading localStorage, and re-running its
+  // removeItem side effect — even though only the first result is used.
+  const [initial] = useState(loadCachedUser);
   const [googleUser, setGoogleUser] = useState<GoogleUser | null>(initial.user);
   const [sessionExpired, setSessionExpired] = useState(initial.expired);
 
@@ -101,7 +105,10 @@ export const useGoogleAuth = (): UseGoogleAuthReturn => {
     setSessionExpired(true);
   }, []);
 
-  const notifyAuthFailure = useCallback(() => endExpiredSession(), [endExpiredSession]);
+  const notifyAuthFailure = useCallback(
+    (token?: string) => endExpiredSession(token),
+    [endExpiredSession]
+  );
 
   // ── Token validation ─────────────────────────────────────────────
   // Runs on mount, on an interval, and whenever the tab is refocused. The

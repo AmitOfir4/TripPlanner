@@ -14,8 +14,9 @@ interface UseMyTripsDeps {
   setCurrentCity: (city: string) => void;
   setSavedLayers: React.Dispatch<React.SetStateAction<TripLayer[]>>;
   /** Called when the server rejects our token, so the session ends and the user
-   *  is prompted to sign in again. */
-  onAuthFailure: () => void;
+   *  is prompted to sign in again. Takes the token the request used, so a late
+   *  401 can't kill a session the user has since renewed. */
+  onAuthFailure: (token?: string) => void;
 }
 
 interface UseMyTripsReturn {
@@ -50,10 +51,10 @@ export const useMyTrips = (deps: UseMyTripsDeps): UseMyTripsReturn => {
   const [myTripsError, setMyTripsError] = useState<string | null>(null);
 
   /** Turn a failed request into a message, ending the session first if the
-   *  token was the problem. */
-  const reportError = (err: unknown, fallback: string): string => {
+   *  token was the problem. `token` is the one the failed request carried. */
+  const reportError = (err: unknown, fallback: string, token?: string): string => {
     if (isAuthError(err)) {
-      onAuthFailure();
+      onAuthFailure(token);
       return 'Your Google session expired. Sign in again to see your saved trips.';
     }
     return err instanceof Error ? err.message : fallback;
@@ -70,7 +71,7 @@ export const useMyTrips = (deps: UseMyTripsDeps): UseMyTripsReturn => {
       setMyTrips(page.trips);
       setMyTripsCursor(page.nextCursor);
     } catch (err) {
-      setMyTripsError(reportError(err, 'Failed to load trips'));
+      setMyTripsError(reportError(err, 'Failed to load trips', googleUser.accessToken));
     } finally {
       setLoadingTrips(false);
     }
@@ -85,7 +86,7 @@ export const useMyTrips = (deps: UseMyTripsDeps): UseMyTripsReturn => {
       setMyTrips(prev => [...prev, ...page.trips]);
       setMyTripsCursor(page.nextCursor);
     } catch (err) {
-      setMyTripsError(reportError(err, 'Failed to load more trips'));
+      setMyTripsError(reportError(err, 'Failed to load more trips', googleUser.accessToken));
     } finally {
       setLoadingMoreTrips(false);
     }
@@ -100,7 +101,7 @@ export const useMyTrips = (deps: UseMyTripsDeps): UseMyTripsReturn => {
       loadSavedTrip(trip);
       setShowMyTripsModal(false);
     } catch (err) {
-      setMyTripsError(reportError(err, 'Failed to load trip'));
+      setMyTripsError(reportError(err, 'Failed to load trip', googleUser.accessToken));
     } finally {
       setLoadingTripId(null);
     }
@@ -116,7 +117,7 @@ export const useMyTrips = (deps: UseMyTripsDeps): UseMyTripsReturn => {
       // as unsaved so the next save creates a new doc instead of 404'ing.
       if (tripId === id) markSaved('', '');
     } catch (err) {
-      setMyTripsError(reportError(err, 'Failed to delete trip'));
+      setMyTripsError(reportError(err, 'Failed to delete trip', googleUser.accessToken));
     }
   };
 

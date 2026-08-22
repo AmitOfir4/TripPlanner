@@ -29,8 +29,9 @@ interface UseSaveTripDeps {
   tripDriveFileId: string | null;
   markSaved: (id: string, title: string) => void;
   /** Called when the server rejects our token, so the session can be ended and
-   *  the user prompted to sign in again instead of editing into a void. */
-  onAuthFailure: () => void;
+   *  the user prompted to sign in again instead of editing into a void. Takes
+   *  the token the request used, so a late 401 can't kill a newer session. */
+  onAuthFailure: (token?: string) => void;
 }
 
 interface UseSaveTripReturn {
@@ -70,21 +71,26 @@ export const useSaveTrip = (deps: UseSaveTripDeps): UseSaveTripReturn => {
   // baseline from it is what makes the pending save resume after a refresh —
   // otherwise the restored layers get adopted as "already synced" and the edits
   // silently never reach the server.
-  const restored = useRef(readTripDraft()).current;
+  //
+  // Computed in a lazy useState initializer, not inline: an argument to
+  // useRef()/useState() is re-evaluated on every render even though only the
+  // first result is kept, so building it inline would re-read localStorage and
+  // re-stringify every layer on each render — once per streamed chat chunk.
+  const [initialSynced] = useState<{ tripId: string | null; snapshot: string }>(() => {
+    const draft = readTripDraft();
+    if (!draft?.tripId) return { tripId: null, snapshot: '' };
+    return {
+      tripId: draft.tripId,
+      snapshot: draft.pendingServerSave
+        ? UNKNOWN_SERVER_SNAPSHOT
+        : JSON.stringify(draft.savedLayers),
+    };
+  });
 
   // Serialized layers last known to match the server, tagged with the trip they
   // belong to. Loading or creating a trip adopts its layers as the baseline so
   // we don't immediately push back what we just received.
-  const syncedRef = useRef<{ tripId: string | null; snapshot: string }>(
-    restored?.tripId
-      ? {
-          tripId: restored.tripId,
-          snapshot: restored.pendingServerSave
-            ? UNKNOWN_SERVER_SNAPSHOT
-            : JSON.stringify(restored.savedLayers),
-        }
-      : { tripId: null, snapshot: '' }
-  );
+  const syncedRef = useRef(initialSynced);
   // Snapshot whose auto-save failed — don't retry it until something changes.
   const failedSnapshotRef = useRef<string | null>(null);
 
@@ -111,20 +117,21 @@ export const useSaveTrip = (deps: UseSaveTripDeps): UseSaveTripReturn => {
 
   const persistCreate = async (title: string) => {
     if (!googleUser) return;
+    const token = googleUser.accessToken;
     if (isTokenExpired(googleUser)) {
-      onAuthFailure();
+      onAuthFailure(token);
       setSaveError(SESSION_EXPIRED_MESSAGE);
       return;
     }
     setSaving(true);
     setSaveError(null);
     try {
-      const trip = await createSavedTrip(buildTripPayload(title), googleUser.accessToken);
+      const trip = await createSavedTrip(buildTripPayload(title), token);
       syncedRef.current = { tripId: trip.id, snapshot: JSON.stringify(savedLayers) };
       markSaved(trip.id, trip.title);
       setShowSaveModal(false);
     } catch (err) {
-      if (isAuthError(err)) onAuthFailure();
+      if (isAuthError(err)) onAuthFailure(token);
       setSaveError(err instanceof Error ? err.message : 'Failed to save trip');
     } finally {
       setSaving(false);
@@ -133,6 +140,7 @@ export const useSaveTrip = (deps: UseSaveTripDeps): UseSaveTripReturn => {
 
   const persistUpdate = async (title: string, silent = false) => {
     if (!googleUser || !tripId) return;
+    const token = googleUser.accessToken;
     const snapshot = JSON.stringify(savedLayers);
 
     // Don't spend a round-trip on a token we already know Google will reject —
@@ -141,14 +149,14 @@ export const useSaveTrip = (deps: UseSaveTripDeps): UseSaveTripReturn => {
     if (isTokenExpired(googleUser)) {
       failedSnapshotRef.current = snapshot;
       setAutoSaveError(SESSION_EXPIRED_MESSAGE);
-      onAuthFailure();
+      onAuthFailure(token);
       return;
     }
 
     setSaving(true);
     setSaveError(null);
     try {
-      const trip = await updateSavedTrip(tripId, buildTripPayload(title), googleUser.accessToken);
+      const trip = await updateSavedTrip(tripId, buildTripPayload(title), token);
       syncedRef.current = { tripId, snapshot };
       failedSnapshotRef.current = null;
       setAutoSaveError(null);
@@ -164,7 +172,7 @@ export const useSaveTrip = (deps: UseSaveTripDeps): UseSaveTripReturn => {
       // identical to a healthy one until the work was gone.
       failedSnapshotRef.current = snapshot;
       setAutoSaveError(message);
-      if (authFailed) onAuthFailure();
+      if (authFailed) onAuthFailure(token);
       if (!silent && !authFailed) {
         // Manual save: the banner alone is easy to miss right after a click.
         alert(message);
