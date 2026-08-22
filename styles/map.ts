@@ -24,6 +24,25 @@ export const mapViewStyles = {
   noApiKeyLink: 'inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-colors shadow-lg',
 } as const;
 
+export const mapSearchStyles = {
+  wrapper: 'absolute top-3 left-1/2 -translate-x-1/2 z-10 w-[min(28rem,calc(100%-6rem))]',
+  inputRow: 'relative flex items-center bg-white rounded-2xl shadow-lg border border-slate-200 focus-within:border-teal-400 focus-within:ring-2 focus-within:ring-teal-100 transition-colors',
+  inputIcon: 'absolute left-3 w-4 h-4 text-slate-400 pointer-events-none',
+  input: 'w-full pl-9 pr-9 py-2.5 text-sm bg-transparent rounded-2xl focus:outline-none placeholder:text-slate-400',
+  clearBtn: 'absolute right-2 p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors',
+  spinner: 'absolute right-3 w-4 h-4 text-teal-500 animate-spin',
+
+  dropdown: 'mt-2 bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden max-h-72 overflow-y-auto',
+  option: (isActive: boolean) =>
+    `w-full flex items-start gap-2.5 px-3 py-2.5 text-left transition-colors ${
+      isActive ? 'bg-teal-50' : 'hover:bg-slate-50'
+    }`,
+  optionIcon: 'w-4 h-4 mt-0.5 text-teal-600 flex-shrink-0',
+  optionMain: 'text-sm font-bold text-slate-900 truncate',
+  optionSecondary: 'text-[11px] text-slate-500 truncate',
+  empty: 'px-3 py-3 text-xs text-slate-400 text-center',
+} as const;
+
 export const mapSidebarStyles = {
   wrapper: (isOpen: boolean) =>
     `relative flex-shrink-0 h-full transition-all duration-300 ease-in-out ${isOpen ? 'w-64' : 'w-0'}`,
@@ -71,6 +90,17 @@ export const mapInfoWindowStyles = {
   iconImg: 'w-6 h-6',
   title: 'font-bold text-sm text-slate-900 mb-1',
   description: 'text-xs text-slate-600 mb-2',
+
+  descriptionRow: 'group flex items-start gap-1.5 mb-2',
+  descriptionText: (isEmpty: boolean) =>
+    `flex-1 text-xs ${isEmpty ? 'text-slate-400 italic' : 'text-slate-600'}`,
+  descriptionEditBtn: 'p-1 -mt-0.5 rounded-md text-slate-400 hover:text-teal-600 hover:bg-slate-100 transition-colors flex-shrink-0',
+  descriptionTextarea: 'w-full px-2 py-1.5 text-xs text-slate-700 border border-slate-300 rounded-lg resize-y min-h-[3.5rem] focus:outline-none focus:ring-2 focus:ring-teal-500',
+  descriptionActions: 'flex items-center gap-2 mt-1.5 mb-2',
+  descriptionSaveBtn: 'flex-1 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5',
+  descriptionCancelBtn: 'flex-1 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5',
+  descriptionHint: 'text-[10px] text-slate-400 mb-2',
+
   ratingRow: 'flex items-center gap-1 mb-2',
   ratingText: 'text-xs font-bold',
   removeBtn: 'flex-1 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5',

@@ -18,6 +18,7 @@ import {
 } from '../api/_security.js';
 import meRouter from './routes/me.js';
 import tripsRouter from './routes/trips.js';
+import placesRouter from './routes/places.js';
 
 // Words that should never be treated as city names
 const STOP_WORDS = new Set(['me','my','a','the','an','it','we','us','i','all','some','this','that','our','your','there','here','them','day','days','trip','plan','visit','see','want','need','like','show','find','get','know','make','take','give']);
@@ -45,7 +46,10 @@ function extractCityFromMessage(message) {
 async function findPlaceByName(query, apiKey, cityCenter) {
   // `rating` is bundled in the same Find Place response (no extra cost) and
   // becomes the authoritative rating for places once they're added to the map.
-  let url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=geometry,formatted_address,name,place_id,rating&key=${apiKey}`;
+  // `language=en` forces English place names/addresses so the cache stores
+  // English regardless of the user's chat language (Hebrew display name lives
+  // on the client's `place.title`, untouched by this lookup).
+  let url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=geometry,formatted_address,name,place_id,rating&language=en&key=${apiKey}`;
   if (cityCenter && cityCenter.lat && cityCenter.lng) {
     url += `&locationbias=circle:50000@${cityCenter.lat},${cityCenter.lng}`;
   }
@@ -97,6 +101,13 @@ async function ensureGeoTable(sql) {
   `;
   await sql`ALTER TABLE geocode_cache ADD COLUMN IF NOT EXISTS place_id TEXT`.catch(() => {});
   await sql`ALTER TABLE geocode_cache ADD COLUMN IF NOT EXISTS rating DOUBLE PRECISION`.catch(() => {});
+  // `place_key` = normalized place name without the city, used by the
+  // name+proximity fallback so variant city wordings reuse one cached place.
+  await sql`ALTER TABLE geocode_cache ADD COLUMN IF NOT EXISTS place_key TEXT`.catch(() => {});
+  await sql`CREATE INDEX IF NOT EXISTS idx_geocode_place_key ON geocode_cache (place_key)`.catch(() => {});
+  // Best-effort one-time backfill for legacy rows: strip the trailing ", city"
+  // off query_key. No-op once every forward row has a place_key.
+  await sql`UPDATE geocode_cache SET place_key = regexp_replace(query_key, ', [^,]*$', '') WHERE place_key IS NULL AND query_type = 'forward'`.catch(() => {});
 }
 
 /**
@@ -111,10 +122,19 @@ async function ensureGeoTable(sql) {
  * `cachedFindPlace(sql, fullQuery, apiKey, cityCenter)` — the second arg is
  * then treated as the full address with no separate city.
  */
-async function cachedFindPlace(sql, placeName, apiKey, cityCenter, city) {
+async function cachedFindPlace(sql, placeName, apiKey, cityCenter, city, hintCoords) {
   const apiQuery = city ? `${placeName}, ${city}` : placeName;
   if (!sql) return findPlaceByName(apiQuery, apiKey, cityCenter);
-  const key = buildPlaceCacheKey(placeName, city);
+  // When the caller knows the place's coordinates (Gemini supplies them for
+  // chat places), key the cache by location instead of the place name. This
+  // keeps the cache language-agnostic — Hebrew "מגדל אייפל" and English
+  // "Eiffel Tower" land on the same row — while the stored place_name comes
+  // back from Google in English (findPlaceByName requests language=en).
+  const useCoordKey = hintCoords && Number.isFinite(hintCoords.lat) && Number.isFinite(hintCoords.lng);
+  const key = useCoordKey
+    ? `geo:${hintCoords.lat.toFixed(4)},${hintCoords.lng.toFixed(4)}`
+    : buildPlaceCacheKey(placeName, city);
+  const placeKey = normalizeKey(placeName);
   try {
     const cached = await sql`
       SELECT lat, lng, formatted_address, place_name, place_id, rating
@@ -133,13 +153,53 @@ async function cachedFindPlace(sql, placeName, apiKey, cityCenter, city) {
         rating: cached[0].rating ?? null,
       };
     }
+
+    // ── Fallback: same place under a different city wording ──────────────
+    // The exact key missed (e.g. "…, zanzibar city" vs cached "…, zanzibar").
+    // When we know the city center, match on place name + proximity to it and
+    // reuse the cached place — saving a redundant Places API call. A same-named
+    // place in another city sits outside the box and still falls through.
+    // Skipped when we already have a coordinate key — coords dedupe directly.
+    if (!useCoordKey && cityCenter && cityCenter.lat && cityCenter.lng) {
+      const near = await sql`
+        SELECT lat, lng, formatted_address, place_name, place_id, rating
+        FROM geocode_cache
+        WHERE place_key = ${placeKey}
+          AND query_type = 'forward'
+          AND lat BETWEEN ${cityCenter.lat - 0.2} AND ${cityCenter.lat + 0.2}
+          AND lng BETWEEN ${cityCenter.lng - 0.2} AND ${cityCenter.lng + 0.2}
+          AND created_at > NOW() - INTERVAL '1825 days'
+        ORDER BY (lat - ${cityCenter.lat}) * (lat - ${cityCenter.lat})
+               + (lng - ${cityCenter.lng}) * (lng - ${cityCenter.lng})
+        LIMIT 1
+      `;
+      if (near.length > 0) {
+        const hit = near[0];
+        console.log('[Chat/Geocode] Cache HIT (name+proximity): ' + key);
+        // Alias this exact key to the same place so it HITs directly next time.
+        await sql`
+          INSERT INTO geocode_cache (query_key, query_type, place_key, lat, lng, formatted_address, place_name, place_id, rating)
+          VALUES (${key}, 'forward', ${placeKey}, ${hit.lat}, ${hit.lng}, ${hit.formatted_address}, ${hit.place_name}, ${hit.place_id || null}, ${hit.rating ?? null})
+          ON CONFLICT (query_key) DO NOTHING
+        `;
+        return {
+          lat: hit.lat, lng: hit.lng,
+          formatted_address: hit.formatted_address,
+          place_name: hit.place_name,
+          place_id: hit.place_id || '',
+          rating: hit.rating ?? null,
+        };
+      }
+    }
+
     const result = await findPlaceByName(apiQuery, apiKey, cityCenter);
     if (!result) return null;
     console.log('[Chat/Geocode] Cache MISS → stored: ' + key);
     await sql`
-      INSERT INTO geocode_cache (query_key, query_type, lat, lng, formatted_address, place_name, place_id, rating)
-      VALUES (${key}, 'forward', ${result.lat}, ${result.lng}, ${result.formatted_address}, ${result.place_name}, ${result.place_id || null}, ${result.rating ?? null})
+      INSERT INTO geocode_cache (query_key, query_type, place_key, lat, lng, formatted_address, place_name, place_id, rating)
+      VALUES (${key}, 'forward', ${placeKey}, ${result.lat}, ${result.lng}, ${result.formatted_address}, ${result.place_name}, ${result.place_id || null}, ${result.rating ?? null})
       ON CONFLICT (query_key) DO UPDATE SET
+        place_key = EXCLUDED.place_key,
         lat = EXCLUDED.lat, lng = EXCLUDED.lng,
         formatted_address = EXCLUDED.formatted_address, place_name = EXCLUDED.place_name,
         place_id = EXCLUDED.place_id, rating = EXCLUDED.rating, created_at = NOW()
@@ -192,6 +252,7 @@ app.get('/api/health', (req, res) => {
 // ── Mounted routers ─────────────────────────────────────────────────────
 app.use('/api/me', meRouter);
 app.use('/api/trips', tripsRouter);
+app.use('/api/places', placesRouter);
 
 // Quick search endpoint - just get place names
 app.post('/api/search', rateLimit('search'), async (req, res) => {
@@ -848,8 +909,13 @@ app.post('/api/geocode', rateLimit('geocode'), async (req, res) => {
   // `address` is the place name (e.g. "Atlantis The Palm"). `city` (optional)
   // joins it for the Places query and is part of the cache key so two places
   // with the same name in different cities don't collide.
-  const { address, city, lat, lng, cityCenter } = req.body;
+  const { address, city, lat, lng, cityCenter, hintLat, hintLng } = req.body;
   const isReverse = typeof lat === 'number' && typeof lng === 'number' && !address;
+  // Coordinate hint (Gemini's per-place coords) — keys the forward cache by
+  // location so it stays language-agnostic. Distinct from `lat`/`lng`, which
+  // signal a reverse-geocode request.
+  const hintCoords = typeof hintLat === 'number' && typeof hintLng === 'number'
+    ? { lat: hintLat, lng: hintLng } : null;
 
   if (!address && !isReverse) {
     return res.status(400).json({ error: 'Provide either "address" or "lat"+"lng"' });
@@ -886,7 +952,7 @@ app.post('/api/geocode', rateLimit('geocode'), async (req, res) => {
         sql = neon(process.env.DATABASE_URL);
         await ensureGeoTable(sql);
       }
-      const result = await cachedFindPlace(sql, address, mapsApiKey, validCityCenter, city);
+      const result = await cachedFindPlace(sql, address, mapsApiKey, validCityCenter, city, hintCoords);
       if (!result) return res.status(404).json({ error: 'Geocoding returned no results' });
       return res.json({ ...result, cached: false });
     } catch (error) {

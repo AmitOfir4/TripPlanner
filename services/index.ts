@@ -1,5 +1,7 @@
 export { TripService } from './tripService';
 export { geocodeAddress, reverseGeocode } from './geocodeService';
+export { autocompletePlaces, getPlaceDetails, newSessionToken } from './placesService';
+export type { PlacePrediction, PlaceDetails } from './placesService';
 export {
   listSavedTrips,
   getSavedTrip,

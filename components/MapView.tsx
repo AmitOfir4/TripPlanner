@@ -1,15 +1,18 @@
 /// <reference types="@types/google.maps" />
 import React, { useState, useEffect, useRef } from 'react';
 import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow, useMap } from '@vis.gl/react-google-maps';
-import { MapPin, Maximize2, Minimize2, Star, ExternalLink, Edit2, Check, X, Trash2, Plus, List } from 'lucide-react';
+import { MapPin, Maximize2, Minimize2, Star, ExternalLink, Edit2, Trash2, Plus, List } from 'lucide-react';
 import { TripRecommendation, TripLayer } from '../types';
 import { AVAILABLE_KML_ICONS } from '../constants';
 import { KmlIconSelector } from './KmlIconSelector';
-import { geocodeAddress, reverseGeocode } from '../services/geocodeService';
+import { geocodeAddress } from '../services/geocodeService';
 import { getDefaultKmlIcon } from '../helpers/kmlIconHelper';
 import { buildGoogleMapsUrl } from '../helpers/urlHelper';
 import { MapController } from './map/MapController';
 import { MapSidebar } from './map/MapSidebar';
+import { MapSearchBar } from './map/MapSearchBar';
+import { PlaceDescription } from './map/PlaceDescription';
+import { NewPlaceForm } from './map/NewPlaceForm';
 import { mapViewStyles as vs, mapInfoWindowStyles as iw } from '../styles/map';
 
 interface MapViewProps {
@@ -18,6 +21,7 @@ interface MapViewProps {
   savedLayers?: TripLayer[];
   focusedPlace?: TripRecommendation | null;
   userLocation?: { lat: number; lng: number } | null;
+  language?: 'en' | 'he';
   onMarkerClick?: (place: TripRecommendation) => void;
   onAddPlace?: (place: TripRecommendation, targetLayerName?: string) => void;
   onRemovePlace?: (place: TripRecommendation) => void;
@@ -29,26 +33,22 @@ interface MapViewProps {
 }
 
 export const MapView: React.FC<MapViewProps> = ({
-  city, places, savedLayers = [], focusedPlace, userLocation,
+  city, places, savedLayers = [], focusedPlace, userLocation, language = 'en',
   onMarkerClick, onAddPlace, onRemovePlace, onUpdatePlace, onReorderPlace,
   onAddLayer, onRenameLayer, onDeleteLayer,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<TripRecommendation | null>(null);
-  const [clickedLocation, setClickedLocation] = useState<{ lat: number; lng: number; name?: string } | null>(null);
-  const [customPlaceName, setCustomPlaceName] = useState('');
-  const [customPlaceIcon, setCustomPlaceIcon] = useState('icon-camera');
-  const [customPlaceLayer, setCustomPlaceLayer] = useState<string>('');
-  const [customPlaceNewLayerName, setCustomPlaceNewLayerName] = useState('');
-  const [isEditingName, setIsEditingName] = useState(false);
+  // Set either by clicking the map (bare coords) or by picking a search
+  // result (coords + the place's name/address/rating).
+  const [clickedLocation, setClickedLocation] = useState<{
+    lat: number; lng: number; name?: string; address?: string; rating?: number | null;
+  } | null>(null);
   const [geocodedFocusedPlace, setGeocodedFocusedPlace] = useState<{ place: TripRecommendation; lat: number; lng: number } | null>(null);
   const [geocodedSavedPlaces, setGeocodedSavedPlaces] = useState<Record<string, { lat: number; lng: number }>>({});
-  const [isAddingToTrip, setIsAddingToTrip] = useState(false);
   const [editingIconForPlace, setEditingIconForPlace] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const geocodingInFlightRef = useRef<Set<string>>(new Set());
-
-  const NEW_LAYER_OPTION = '__new__';
 
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const defaultCenter = (userLocation && isFinite(userLocation.lat) && isFinite(userLocation.lng))
@@ -107,6 +107,15 @@ export const MapView: React.FC<MapViewProps> = ({
   const isPlaceSaved = (place: TripRecommendation | null): boolean => {
     if (!place) return false;
     return savedPlaces.some((p) => p.title === place.title);
+  };
+
+  const saveDescription = (description: string) => {
+    if (!selectedPlace) return;
+    const updated = { ...selectedPlace, description };
+    setSelectedPlace(updated);
+    // A place already in the trip persists straight away; one that hasn't been
+    // added yet keeps the edit staged until "Add to Trip" picks it up.
+    if (isPlaceSaved(selectedPlace)) onUpdatePlace?.(updated);
   };
 
   if (!city && savedLayers.length === 0) return null;
@@ -169,18 +178,25 @@ export const MapView: React.FC<MapViewProps> = ({
                 onClick={(e) => {
                   if (e.detail.latLng) {
                     setClickedLocation({ lat: e.detail.latLng.lat, lng: e.detail.latLng.lng });
-                    setCustomPlaceName('');
-                    setCustomPlaceIcon('icon-camera');
-                    // Default to the first existing layer; falls back to "create new"
-                    // if there are no layers yet.
-                    setCustomPlaceLayer(savedLayers[0]?.name || NEW_LAYER_OPTION);
-                    setCustomPlaceNewLayerName('');
-                    setIsEditingName(false);
                     setSelectedPlace(null);
                   }
                 }}
               >
                 <MapController city={city} focusedPlace={focusedPlace} places={places} />
+
+                <MapSearchBar
+                  language={language}
+                  onSelectPlace={(place) => {
+                    setSelectedPlace(null);
+                    setClickedLocation({
+                      lat: place.lat,
+                      lng: place.lng,
+                      name: place.name,
+                      address: place.formatted_address,
+                      rating: place.rating,
+                    });
+                  }}
+                />
 
                 {/* Pending place markers */}
                 {placesWithCoords.map((place, index) => (
@@ -229,6 +245,10 @@ export const MapView: React.FC<MapViewProps> = ({
                 {/* Selected place info window */}
                 {selectedPlace && (
                   <InfoWindow
+                    // Without this the Maps API pulls focus into the window
+                    // every time it (re)opens, yanking the caret out of the
+                    // inputs below mid-typing.
+                    shouldFocus={false}
                     position={
                       selectedPlace.lat && selectedPlace.lng
                         ? { lat: selectedPlace.lat, lng: selectedPlace.lng }
@@ -262,7 +282,14 @@ export const MapView: React.FC<MapViewProps> = ({
                         </div>
                       )}
                       <h4 className={iw.title}>{selectedPlace.title}</h4>
-                      <p className={iw.description}>{selectedPlace.description}</p>
+
+                      {/* ── Description (editable before and after adding) ─── */}
+                      <PlaceDescription
+                        key={selectedPlace.title}
+                        description={selectedPlace.description}
+                        onSave={(isPlaceSaved(selectedPlace) ? onUpdatePlace : onAddPlace) ? saveDescription : undefined}
+                        hint={isPlaceSaved(selectedPlace) ? undefined : 'Saved with the place when you add it'}
+                      />
                       {selectedPlace.rating && (
                         <div className={iw.ratingRow}>
                           <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
@@ -296,96 +323,19 @@ export const MapView: React.FC<MapViewProps> = ({
 
                 {/* Clicked location info window */}
                 {clickedLocation && (
-                  <InfoWindow position={{ lat: clickedLocation.lat, lng: clickedLocation.lng }} onCloseClick={() => { setClickedLocation(null); setIsEditingName(false); }}>
-                    <div className={iw.clickedWrapper}>
-                      <div className="mb-3">
-                        <label className={iw.clickedLabel}>Place Name</label>
-                        <div className="flex items-center gap-2">
-                          {isEditingName ? (
-                            <>
-                              <input type="text" value={customPlaceName} onChange={(e) => setCustomPlaceName(e.target.value)} className={iw.clickedInput} autoFocus />
-                              <button onClick={() => setIsEditingName(false)} className={iw.clickedConfirmBtn}><Check className="w-3 h-3" /></button>
-                            </>
-                          ) : (
-                            <>
-                              <h4 className={iw.clickedTitle}>{customPlaceName || 'Selected Location'}</h4>
-                              <button onClick={() => setIsEditingName(true)} className={iw.clickedEditBtn}><Edit2 className="w-3 h-3" /></button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      <p className={iw.clickedCoords}>{clickedLocation.lat.toFixed(6)}, {clickedLocation.lng.toFixed(6)}</p>
-                      {onAddPlace && (
-                        <div className="mb-3">
-                          <label className={iw.clickedLabel}>Select Icon</label>
-                          <KmlIconSelector currentIconId={customPlaceIcon} onIconChange={setCustomPlaceIcon} />
-                        </div>
-                      )}
-                      {onAddPlace && (
-                        <div className="mb-3">
-                          <label className={iw.clickedLabel}>Add to Layer</label>
-                          <select
-                            value={customPlaceLayer}
-                            onChange={(e) => setCustomPlaceLayer(e.target.value)}
-                            className={iw.clickedLayerSelect}
-                          >
-                            {savedLayers.map((l) => (
-                              <option key={l.name} value={l.name}>{l.name}</option>
-                            ))}
-                            <option value={NEW_LAYER_OPTION}>+ New layer…</option>
-                          </select>
-                          {customPlaceLayer === NEW_LAYER_OPTION && (
-                            <input
-                              type="text"
-                              value={customPlaceNewLayerName}
-                              onChange={(e) => setCustomPlaceNewLayerName(e.target.value)}
-                              placeholder="New layer name"
-                              className={`${iw.clickedLayerNewInput} mt-2`}
-                            />
-                          )}
-                        </div>
-                      )}
-                      {onAddPlace && (
-                        <button
-                          disabled={
-                            isAddingToTrip ||
-                            (customPlaceLayer === NEW_LAYER_OPTION && !customPlaceNewLayerName.trim())
-                          }
-                          onClick={async () => {
-                            setIsAddingToTrip(true);
-                            let name = customPlaceName.trim();
-                            if (!name) {
-                              const result = await reverseGeocode(clickedLocation.lat, clickedLocation.lng);
-                              name = result?.place_name || `${clickedLocation.lat.toFixed(4)}, ${clickedLocation.lng.toFixed(4)}`;
-                            }
-                            const targetLayer =
-                              customPlaceLayer === NEW_LAYER_OPTION
-                                ? customPlaceNewLayerName.trim()
-                                : customPlaceLayer;
-                            onAddPlace({
-                              title: name,
-                              description: `Custom location at ${clickedLocation.lat.toFixed(4)}, ${clickedLocation.lng.toFixed(4)}`,
-                              category: 'Other',
-                              lat: clickedLocation.lat,
-                              lng: clickedLocation.lng,
-                              customKmlIcon: customPlaceIcon,
-                            }, targetLayer || undefined);
-                            setClickedLocation(null);
-                            setIsEditingName(false);
-                            setIsAddingToTrip(false);
-                          }}
-                          className={iw.clickedAddBtn}
-                        >
-                          <MapPin className="w-3 h-3" />
-                          {isAddingToTrip ? 'Adding...' : 'Add to Trip'}
-                        </button>
-                      )}
-                      <a href={clickedLocation.name
-                          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(clickedLocation.name)}&center=${clickedLocation.lat},${clickedLocation.lng}`
-                          : `https://www.google.com/maps/search/?api=1&query=${clickedLocation.lat},${clickedLocation.lng}`} target="_blank" rel="noreferrer" className={iw.clickedMapsLink}>
-                        <ExternalLink className="w-3 h-3" /> Open in Google Maps
-                      </a>
-                    </div>
+                  <InfoWindow
+                    shouldFocus={false}
+                    position={{ lat: clickedLocation.lat, lng: clickedLocation.lng }}
+                    onCloseClick={() => setClickedLocation(null)}
+                  >
+                    <NewPlaceForm
+                      // Remount on a new pick so the fields reset.
+                      key={`${clickedLocation.lat},${clickedLocation.lng}`}
+                      location={clickedLocation}
+                      savedLayers={savedLayers}
+                      onAddPlace={onAddPlace}
+                      onDone={() => setClickedLocation(null)}
+                    />
                   </InfoWindow>
                 )}
               </Map>

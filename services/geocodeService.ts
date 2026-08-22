@@ -18,10 +18,11 @@ const memoryCache = new Map<string, GeocodeResult>();
 // In-flight request deduplication — concurrent calls for the same key share one fetch
 const inFlight = new Map<string, Promise<any>>();
 
-function forwardKey(address: string, city?: string, country?: string): string {
+function forwardKey(address: string, city?: string, country?: string, hint?: { lat: number; lng: number }): string {
   const parts = [`fwd:${address.toLowerCase().trim()}`];
   if (city) parts.push(city.toLowerCase().trim());
   if (country) parts.push(country.toLowerCase().trim());
+  if (hint) parts.push(`@${hint.lat.toFixed(4)},${hint.lng.toFixed(4)}`);
   return parts.join('|');
 }
 
@@ -34,15 +35,18 @@ function reverseKey(lat: number, lng: number): string {
  * can canonicalise it to English in the cache key — Hebrew "דובאי" and
  * English "Dubai" then hit the same row. `country` (optional, ISO-3166
  * alpha-2 like "IT") is forwarded as Google's `components=country:` filter so
- * places like "Naples, IT" never resolve to Naples, Florida.
+ * places like "Naples, IT" never resolve to Naples, Florida. `hint` (optional,
+ * Gemini's per-place coords) keys the server cache by location so it stays
+ * language-agnostic — the Hebrew and English names of one place share a row.
  */
 export async function geocodeAddress(
   address: string,
   city?: string,
   cityCenter?: { lat: number; lng: number },
-  country?: string
+  country?: string,
+  hint?: { lat: number; lng: number }
 ): Promise<GeocodeResult | null> {
-  const key = forwardKey(address, city, country);
+  const key = forwardKey(address, city, country, hint);
   const hit = memoryCache.get(key);
   if (hit) return hit;
 
@@ -54,7 +58,7 @@ export async function geocodeAddress(
       const res = await fetch(GEOCODE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, city, country, cityCenter })
+        body: JSON.stringify({ address, city, country, cityCenter, hintLat: hint?.lat, hintLng: hint?.lng })
       });
 
       if (!res.ok) return null;

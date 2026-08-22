@@ -53,7 +53,7 @@ const App: React.FC = () => {
   const { importingMap, importFromFile } = useMapImport();
 
   // ── Feature hooks (state + handlers extracted from this component) ─
-  const { showSaveModal, saving, saveError, handleSaveClick, persistCreate, closeSaveModal } =
+  const { showSaveModal, saving, saveError, justSaved, handleSaveClick, persistCreate, closeSaveModal } =
     useSaveTrip({ googleUser, savedLayers, currentCity, tripId, tripTitle, tripDriveFileId, markSaved });
 
   const {
@@ -131,6 +131,7 @@ const App: React.FC = () => {
                   savedLayers={savedLayers}
                   focusedPlace={focusedPlace}
                   userLocation={userLocation ? { lat: userLocation.latitude, lng: userLocation.longitude } : null}
+                  language={language}
                   onAddPlace={savePlace}
                   onRemovePlace={removePlaceFromMap}
                   onUpdatePlace={updatePlaceFromMap}
@@ -151,7 +152,7 @@ const App: React.FC = () => {
                 {googleUser && (
                   <button onClick={handleSaveClick} disabled={saving} className={s.saveBtn}>
                     <Save className="w-4 h-4" />
-                    {saving ? 'Saving…' : tripId ? 'Save' : 'Save Trip'}
+                    {saving ? 'Saving…' : justSaved ? 'Saved' : tripId ? 'Save' : 'Save Trip'}
                   </button>
                 )}
                 {googleUser && (

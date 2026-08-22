@@ -101,6 +101,9 @@ export const LIMITS = {
   enrich:         { max: num(process.env.RATE_LIMIT_ENRICH,         20), windowMs: 60_000 },
   chat:           { max: num(process.env.RATE_LIMIT_CHAT,           20), windowMs: 60_000 },
   geocode:        { max: num(process.env.RATE_LIMIT_GEOCODE,        60), windowMs: 60_000 },
+  // Autocomplete fires per keystroke (debounced), so it needs more headroom
+  // than a one-shot geocode.
+  places:         { max: num(process.env.RATE_LIMIT_PLACES,        120), windowMs: 60_000 },
   'import-mymap': { max: num(process.env.RATE_LIMIT_IMPORT_MYMAP,   20), windowMs: 60_000 },
   me:             { max: num(process.env.RATE_LIMIT_ME,             20), windowMs: 60_000 },
   'trips:read':   { max: num(process.env.RATE_LIMIT_TRIPS_READ,    120), windowMs: 60_000 },

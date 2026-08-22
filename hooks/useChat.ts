@@ -28,7 +28,11 @@ const verifyPlace = async (
   cityHint: string
 ): Promise<TripRecommendation> => {
   const cityForQuery = place.city || cityHint || undefined;
-  const result = await geocodeAddress(place.title, cityForQuery, undefined, place.country);
+  // Gemini's per-place coords key the server cache by location, keeping it
+  // language-agnostic (English stored name, Hebrew title untouched below).
+  const hint = typeof place.lat === 'number' && typeof place.lng === 'number'
+    ? { lat: place.lat, lng: place.lng } : undefined;
+  const result = await geocodeAddress(place.title, cityForQuery, undefined, place.country, hint);
   if (result) {
     return {
       ...place,
